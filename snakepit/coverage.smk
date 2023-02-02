@@ -1,6 +1,6 @@
 rule all:
     input:
-        'annotated_coverage.bed'
+        'annotated_coverage.bed.gz'
         #expand('coverage/{sample}.{tissue}.bed.gz',sample=config['samples'],tissue=config['bams'])
 
 def get_ID(sample,tissue):
@@ -23,7 +23,7 @@ rule perbase_depth:
         window = 100000
     threads: 2
     resources:
-        mem_mb = 5000
+        mem_mb = 7500
     shell:
         '''
         perbase only-depth {input} --bed-format -z -F 3848 -t {threads} --bgzip -L 6 -T {threads} -o {output}
@@ -55,16 +55,27 @@ rule format_annotation:
 
 rule bedtools_annotate:
     input:
-        beds = expand('coverage/{sample}.{tissue}.bed.gz',sample=config['samples'],tissue=config['bams']),
+        beds = 'coverage/{sample}.{tissue}.bed.gz',
         annotation = 'annotation.bed'
     output:
-        'annotated_coverage.bed'
-    params:
-        names = [f'{sample}_{tissue}' for sample,tissue in zip(config['samples'],config['bams'])]
+        'coverage/{sample}.{tissue}.annotated.bed'
+    #params:
+    #    names = expand('{sample}_{tissue}',sample=config['samples'],tissue=config['bams'])
     threads: 1
     resources:
-        mem_mb = 15000
+        mem_mb = 75000
     shell:
         '''
-        bedtools annotate -both -names {params.names} -i {input.annotation} -files {input.beds}
+        bedtools annotate -both -i {input.annotation} -files {input.beds} | awk 'NR>1 {{ print $0"\\t{wildcards.sample}\\t{wildcards.tissue}" }}' | sort -k1,1n -k2,2n >> {output}
+        '''
+
+localrules: collate_annotation
+rule collate_annotation:
+    input:
+        beds = expand('coverage/{sample}.{tissue}.annotated.bed',sample=config['samples'],tissue=config['bams'])
+    output:
+        'annotated_coverage.bed.gz'
+    shell:
+        '''
+        cat <(echo -e "chr\\tstart\\tstop\\tgene\\tfeature\\tstrand\\tdepth\\tcoverage\\tsample\\ttissue") {input} | pigz -c > {output}
         '''
