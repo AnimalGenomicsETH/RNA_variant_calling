@@ -1,7 +1,7 @@
 rule all:
     input:
-        'annotated_coverage.bed.gz'
-        #expand('coverage/{sample}.{tissue}.bed.gz',sample=config['samples'],tissue=config['bams'])
+        'annotated_coverage.bed.gz',
+        'genome_coverage.csv'
 
 def get_ID(sample,tissue):
     match tissue:
@@ -23,7 +23,7 @@ rule perbase_depth:
         window = 100000
     threads: 2
     resources:
-        mem_mb = 7500
+        mem_mb = lambda wildcards: 15000 if wildcards.tissue == 'WGS' else 10000
     shell:
         '''
         perbase only-depth {input} --bed-format -z -F 3848 -t {threads} --bgzip -L 6 -T {threads} -o {output}
@@ -31,6 +31,28 @@ rule perbase_depth:
         #'''
         #awk -v W={params.window} '$1~/^[0-9]/' {{ A[$1][int($2/W)]+=($3-$2)*$4 }} END {{ for (chr in A) {{ for (window in A[chr]) {{ print chr,window*W,window*W+W,A[chr][window] }} }} }}' > {output}
         #'''
+
+rule estimate_coverage:
+    input:
+       rules.perbase_depth.output
+    output:
+        'coverage/{sample}.{tissue}.genome_coverage.csv'
+    shell:
+        '''
+        zcat {input} | mawk -v S={wildcards.sample} -v T={wildcards.tissue} -v OFS="\\t" '$1~/^[0-9]/ {{ c+=($3-$2) }} END {{ print S,T,c }}' > {output}
+        '''
+
+localrules: collate_coverage
+rule collate_coverage:
+    input:
+        expand('coverage/{sample}.{tissue}.genome_coverage.csv',sample=config['samples'],tissue=config['bams'])
+    output:
+        'genome_coverage.csv'
+    shell:
+        '''
+        cat <(echo -e "sample\\ttissue\\tcoverage") {input} > {output}
+        '''
+
 
 localrules: format_annotation
 rule format_annotation:
@@ -63,7 +85,7 @@ rule bedtools_annotate:
     #    names = expand('{sample}_{tissue}',sample=config['samples'],tissue=config['bams'])
     threads: 1
     resources:
-        mem_mb = 75000
+        mem_mb = lambda wildcards: 95000 if wildcards.tissue == 'WGS' else 25000
     shell:
         '''
         bedtools annotate -both -i {input.annotation} -files {input.beds} | awk 'NR>1 {{ print $0"\\t{wildcards.sample}\\t{wildcards.tissue}" }}' | sort -k1,1n -k2,2n >> {output}
