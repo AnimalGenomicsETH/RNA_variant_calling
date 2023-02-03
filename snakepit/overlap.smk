@@ -1,4 +1,8 @@
+from pathlib import PurePath
 
+rule all:
+    input:
+        expand('happy/{sample}.{tissue}',sample=config['samples'],tissue=('Testis','Epididymis_head','Vas_deferens'))
 
 rule bcftools_isec:
     input:
@@ -33,3 +37,34 @@ rule make_bed:
         awk '{{print $1,$2,$2+1}}' {input} > {output}
         '''
 
+workflow.singularity_args = f'-B $TMPDIR -B {PurePath(config["reference"]).parent}'
+
+rule bcftools_split:
+    input:
+        '{tissue}/all.Unrevised.vcf.gz'
+    output:
+        expand('split_vcfs/{tissue}/{sample}.vcf.gz',sample=config['samples'],allow_missing=True)
+    params:
+        _dir = lambda wildcards, output: PurePath(output[0]).parent
+    resources:
+        mem_mb = 2500
+    shell:
+        '''
+        bcftools +split -i 'GT[*]="alt"' -Oz -o {params._dir} {input}
+        '''
+
+rule happy:
+    input:
+        vcfs = lambda wildcards: expand('split_vcfs/{tissues}/{sample}.vcf.gz',tissues=('WGS',wildcards.tissue),allow_missing=True),
+        reference = config['reference']
+    output:
+        'happy/{sample}.{tissue}'
+    container: '/cluster/work/pausch/alex/software/images/hap.py_latest.sif'
+    threads: 4
+    resources:
+        mem_mb = 2500,
+        sratch = '10G'
+    shell:
+        '''
+        /opt/hap.py/bin/hap.py -r {input.reference} --bcf --usefiltered-truth --no-roc --no-json -L --pass-only  --scratch-prefix $TMPDIR -X --threads {threads} -o {output} {input.vcfs}
+        '''
