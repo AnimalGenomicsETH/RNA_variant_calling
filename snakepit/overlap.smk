@@ -2,7 +2,7 @@ from pathlib import PurePath
 
 rule all:
     input:
-        expand('happy/{sample}.{tissue}',sample=config['samples'],tissue=('Testis','Epididymis_head','Vas_deferens'))
+        expand('happy/{sample}.{tissue}.summary.csv',sample=config['samples'],tissue=('Testis','Epididymis_head','Vas_deferens'))
 
 rule bcftools_isec:
     input:
@@ -58,13 +58,16 @@ rule happy:
         vcfs = lambda wildcards: expand('split_vcfs/{tissues}/{sample}.vcf.gz',tissues=('WGS',wildcards.tissue),allow_missing=True),
         reference = config['reference']
     output:
-        'happy/{sample}.{tissue}'
+        csv = 'happy/{sample}.{tissue}.summary.csv',
+        others = temp(multiext('happy/{sample}.{tissue}','.bcf','.bcf.csi','.extended.csv','.roc.all.csv.gz','.runinfo.json'))
+    params:
+        _dir = lambda wildcards, output: PurePath(output.csv).parent
     container: '/cluster/work/pausch/alex/software/images/hap.py_latest.sif'
     threads: 4
     resources:
-        mem_mb = 2500,
+        mem_mb = 500,
         sratch = '10G'
     shell:
         '''
-        /opt/hap.py/bin/hap.py -r {input.reference} --bcf --usefiltered-truth --no-roc --no-json -L --pass-only  --scratch-prefix $TMPDIR -X --threads {threads} -o {output} {input.vcfs}
+        /opt/hap.py/bin/hap.py -r {input.reference} --bcf --usefiltered-truth --no-roc --no-json -L --pass-only --scratch-prefix $TMPDIR -X --threads {threads} -o {params._dir} {input.vcfs}
         '''
