@@ -2,7 +2,7 @@ from pathlib import PurePath
 
 rule all:
     input:
-        expand('happy/{sample}.{tissue}.summary.csv',sample=config['samples'],tissue=('Testis','Epididymis_head','Vas_deferens'))
+        'happy_metrics.csv'
 
 rule bcftools_isec:
     input:
@@ -61,7 +61,7 @@ rule happy:
         csv = 'happy/{sample}.{tissue}.summary.csv',
         others = temp(multiext('happy/{sample}.{tissue}','.bcf','.bcf.csi','.extended.csv','.roc.all.csv.gz','.runinfo.json'))
     params:
-        _dir = lambda wildcards, output: PurePath(output.csv).parent
+        _dir = lambda wildcards, output: PurePath(output.csv).with_suffix('').with_suffix('')
     container: '/cluster/work/pausch/alex/software/images/hap.py_latest.sif'
     threads: 4
     resources:
@@ -70,4 +70,19 @@ rule happy:
     shell:
         '''
         /opt/hap.py/bin/hap.py -r {input.reference} --bcf --usefiltered-truth --no-roc --no-json -L --pass-only --scratch-prefix $TMPDIR -X --threads {threads} -o {params._dir} {input.vcfs}
+        '''
+
+localrules: gather_happy
+rule gather_happy:
+    input:
+        expand('happy/{sample}.{tissue}.summary.csv',sample=config['samples'],tissue=('Testis','Epididymis_head','Vas_deferens'))
+    output:
+        'happy_metrics.csv'
+    shell:
+        '''
+        echo -e "variant truth query recall precision truth_TiTv query_TiTv sample tissue" > {output}
+        for i in {input}
+        do
+          awk -v I=$(basename $i) -F',' '$2=="PASS" {{ split(I,a,"."); print $1,$3,$6,$10,$11,$14,$15,a[1],a[2] }}' $i >> {output}
+        done
         '''
