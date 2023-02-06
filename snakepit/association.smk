@@ -5,22 +5,28 @@ wildcard_constraints:
     chunk = r'\d+',
     chrom = r'\d+',
     MAF = r'\d+',
-    vcf = r'(eQTL|gwas)/\S+'
+    vcf = r'(eQTL|gwas)/\S+',
+    tissue = r'WGS|Epididymis_head|Vas_deferens|Testis'
+
+def format_MAF(maf):
+    return str(maf)[2:].zfill(2)
 
 rule all:
     input:
-        expand('eQTL/{tissue}/{_pass}.{MAF}.txt',tissue=config['vcf'],_pass=('conditionals',),MAF=(0.01))
+        expand('eQTL/WGS_{tissue}/{_pass}.{MAF}.txt',tissue=config['vcf'],_pass=('conditionals',),MAF=format_MAF(config['MAF'])),
+        expand('eQTL/{tissue}_{tissue}/{_pass}.{MAF}.txt',tissue=config['vcf'],_pass=('conditionals',),MAF=format_MAF(config['MAF'])),
+        expand('replication/{tissue}.{mode}.csv',tissue=config['vcf'],mode=('best','all'))
 
 localrules: concat_genes
 rule concat_genes:
     input:
-        lambda wildcards: expand('/cluster/work/pausch/xena/eQTL/gene_counts/{tissue_code}/QTLtools/{chromosome}_gene_counts.gz',chromosome=range(1,30),tissue_code={'Testis':'testis','Epididymis_head':'epi_h','Vas_deferens':'vas_d'}[wildcards.tissue])
+        lambda wildcards: expand('/cluster/work/pausch/xena/eQTL/gene_counts/{tissue_code}/QTLtools/{chromosome}_gene_counts.gz',chromosome=range(1,30),tissue_code={'Testis':'testis','Epididymis_head':'epi_h','Vas_deferens':'vas_d'}[wildcards.expression])
     output:
-        'aligned_genes/{tissue}.bed.gz',
-        'aligned_genes/{tissue}.bed.gz.tbi' 
+        'aligned_genes/{expression}.bed.gz',
+        'aligned_genes/{expression}.bed.gz.tbi' 
     shell:
         '''
-        zcat {input} | sort -k1,1n -k2,2n | pigz -p 2 -c > {output[0]}
+        zcat {input} | sort -u -k1,1n -k2,2n | bgzip -@ 2 -c > {output[0]}
         tabix -p bed {output[0]}
         '''
 
@@ -43,7 +49,7 @@ rule normalise_vcf:
 
 rule exclude_MAF:
     input:
-        'eQTL/{tissue}/variants.normed.vcf.gz'
+        rules.normalise_vcf.output
     output:
         'eQTL/{tissue}/exclude_sites.{MAF}.txt'
     shell:
@@ -64,10 +70,10 @@ rule qtltools_parallel:
         vcf = rules.normalise_vcf.output,
         exclude = rules.exclude_MAF.output,
         bed = rules.concat_genes.output,
-        cov = lambda wildcards: config['covariates'][wildcards.tissue],
-        mapping = lambda wildcards: 'eQTL/{tissue}/permutations_all.{MAF}.thresholds.txt' if wildcards._pass == 'conditionals' else []
+        cov = lambda wildcards: config['covariates'][wildcards.expression],
+        mapping = lambda wildcards: 'eQTL/{tissue}_{expression}/permutations_all.{MAF}.thresholds.txt' if wildcards._pass == 'conditionals' else []
     output:
-        merged = temp('eQTL/{tissue}/{_pass}.{chunk}.{MAF}.txt')
+        merged = temp('eQTL/{tissue}_{expression}/{_pass}.{chunk}.{MAF}.txt')
     params:
         _pass = lambda wildcards,input: get_pass(wildcards._pass,input),#f'--permute {config["permutations"]}' if wildcards._pass == 'permutations' else f'--mapping {input.mapping}',
         debug = '--silent' if 'debug' in config else '',
@@ -85,9 +91,10 @@ localrules: qtltools_gather, qtltools_postprocess
 
 rule qtltools_gather:
     input:
-        expand('eQTL/{tissue}/{_pass}.{chunk}.{MAF}.txt',chunk=range(1,config['chunks']+1),allow_missing=True)
+        expand(rules.qtltools_parallel.output,chunk=range(1,config['chunks']+1),allow_missing=True)
+        #'eQTL/{tissue}_{expression}/{_pass}.{chunk}.{MAF}.txt',chunk=range(1,config['chunks']+1),allow_missing=True)
     output:
-        'eQTL/{tissue}/{_pass}.{MAF}.txt'
+        'eQTL/{tissue}_{expression}/{_pass}.{MAF}.txt'
     resources:
         mem_mb = 3000,
         walltime = '20'
@@ -100,11 +107,14 @@ rule qtltools_gather:
 
 rule qtltools_FDR:
     input:
-        'eQTL/{tissue}/permutations.{MAF}.txt'
+        expand(rules.qtltools_gather.output,_pass='permutations',allow_missing=True)
     output:
-        'eQTL/{tissue}/permutations_all.{MAF}.thresholds.txt'
+        'eQTL/{tissue}_{expression}/permutations_all.{MAF}.thresholds.txt'
     params:
         out = lambda wildcards, output: PurePath(output[0]).with_suffix('').with_suffix('')
+    envmodules:
+        'gcc/8.2.0',
+        'r/4.2.2'
     shell:
         '''
         Rscript /cluster/work/pausch/alex/software/qtltools/scripts/qtltools_runFDR_cis.R {input} 0.05 {params.out}
@@ -123,3 +133,47 @@ rule qtltools_postprocess:
         awk -v L={wildcards.minS} '($11-$10)>=L {{print {params.print_key}}}' {input} >>  {output}
         '''
 
+### REPLICATION RESULTS
+
+localrules: prepare_qtl
+rule prepare_qtl:
+    input:
+        expand(rules.qtltools_gather.output,tissue='WGS',_pass='conditionals',MAF=format_MAF(config['MAF']),allow_missing=True)
+    output:
+        'replication/{expression}.{mode}.qtl'
+    params:
+        expression = lambda wildcards: '$A&&$B' if wildcards.mode == 'best' else '$B'
+    shell:
+        '''
+        mawk '{{ if (NR==1) {{ for (i = 1; i<=NF;i++) if ($i=="bwd_best_hit") {{ A=i }}  else {{ if ($i=="bwd_sig") {{ B=i }} }} }} else {{ if ({params.expression}) {{ print $1" "$8 }} }} }}' {input} > {output}
+        '''
+
+rule qtltools_replicate:
+    input:
+        phenotypes = rules.concat_genes.output[0],
+        covariates = lambda wildcards: config['covariates'][wildcards.expression],
+        vcf = lambda wildcards: expand(rules.normalise_vcf.output,tissue=wildcards.expression),
+        qtl = rules.prepare_qtl.output
+    output:
+        'replication/{expression}.{mode}.replicated'
+    threads: 1
+    resources:
+        mem_mb = 2500
+    shell:
+        '''
+        QTLtools rep --bed {input.phenotypes} --cov {input.covariates} --vcf {input.vcf} --qtl {input.qtl} --normal --out {output}
+        '''
+
+rule collate_replicate:
+    input:
+        replication = rules.qtltools_replicate.output,
+        qtl = expand(rules.qtltools_gather.output,tissue='WGS',_pass='conditionals',MAF=format_MAF(config['MAF']),allow_missing=True)
+    output:
+        'replication/{expression}.{mode}.csv'
+    shell:
+        '''
+        while read a b c d e f g h i j k
+        do
+          mawk -v C=$a -v D=$f -v p=$j -v s=$k '{{ if (NR==1) {{ for (i = 1; i<=NF;i++) if ($i=="bwd_pval") {{ A=i }}  else {{ if ($i=="bwd_slope") {{ B=i }} }} }} else {{ if ($0~C&&$0~D) {{ print C,D,$A,$B,p,s }} }} }}' {input.qtl} >> {output}
+        done < {input.replication}
+        '''
