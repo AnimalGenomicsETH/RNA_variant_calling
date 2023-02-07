@@ -15,7 +15,37 @@ rule all:
     input:
         expand('eQTL/WGS_{tissue}/{_pass}.{MAF}.txt',tissue=config['vcf'],_pass=('conditionals',),MAF=format_MAF(config['MAF'])),
         expand('eQTL/{tissue}_{tissue}/{_pass}.{MAF}.txt',tissue=config['vcf'],_pass=('conditionals',),MAF=format_MAF(config['MAF'])),
-        expand('replication/{tissue}.{mode}.csv',tissue=config['vcf'],mode=('best','all'))
+        expand('replication/{tissue}.{mode}.csv',tissue=config['vcf'],mode=('best','all')),
+        'ase_metrics.csv'
+
+rule qtltools_ase:
+    input:
+        vcf = 'WGS/autosomes.Unrevised.imputed.vcf.gz',
+        bam = 'bam_symlinks/{sample}.{tissue}.bam',
+        reference = config['reference'],
+        annotation = 'annotation.bed'
+    output:
+        'ase/{sample}.{tissue}.ase',
+        'ase/{sample}.{tissue}.metric',
+        temp('ase/{sample}.{tissue}.ref_bias')
+    params:
+        out = lambda wildcards, output: PurePath(output[0]).with_suffix('')
+    shell:
+        '''
+        QTLtools ase --bam {input.bam} --vcf {input.vcf} --ind {wildcards.sample} --mapq 10 -f {input.reference} --gtf {input.annotation} --suppress-warnings --pvalue 0.001 --out {params.out}
+        awk 'NR>1 {{ print {wildcards.sample},{wildcards.tissue},$21 }}' {output[0]} > {output[1]}
+        '''
+
+localrules: gather_ase
+rule gather_ase:
+    input:
+        expand('ase/{sample}.{tissue}.metric',sample=config['samples'],tissue=config['tissues'])
+    output:
+        'ase_metrics.csv'
+    shell:
+        '''
+        cat <(echo -e "sample tissue count") {input} > {output}
+        '''
 
 localrules: concat_genes
 rule concat_genes:
@@ -63,7 +93,7 @@ def get_pass(_pass,input):
     elif _pass == 'conditionals':
         return f'--mapping {input.mapping}'
     elif _pass == 'nominals':
-        return '--nominal 1.0'
+        return f'--nominal {config.get("nominal",0.05)}'
 
 rule qtltools_parallel:
     input:
@@ -81,7 +111,7 @@ rule qtltools_parallel:
     threads: 1
     resources:
         mem_mb = 12500,
-        walltime = lambda wildcards: '24:00' if wildcards._pass == 'permutations' else '4:00'
+        walltime = lambda wildcards: '24:00' if wildcards._pass == 'permutationsX' else '4:00'
     shell:
         '''
         QTLtools cis --vcf {input.vcf} --bed {input.bed} --cov {input.cov} {params._pass} {params.grp} --window {config[window]} --normal --chunk {wildcards.chunk} {config[chunks]} --out {output} {params.debug}
@@ -91,7 +121,7 @@ localrules: qtltools_gather, qtltools_postprocess
 
 rule qtltools_gather:
     input:
-        expand(rules.qtltools_parallel.output,chunk=range(1,config['chunks']+1),allow_missing=True)
+        expand(rules.qtltools_parallel.output,chunk=range(0,config['chunks']+1),allow_missing=True)
         #'eQTL/{tissue}_{expression}/{_pass}.{chunk}.{MAF}.txt',chunk=range(1,config['chunks']+1),allow_missing=True)
     output:
         'eQTL/{tissue}_{expression}/{_pass}.{MAF}.txt'
@@ -145,7 +175,7 @@ rule prepare_qtl:
         expression = lambda wildcards: '$A&&$B' if wildcards.mode == 'best' else '$B'
     shell:
         '''
-        mawk '{{ if (NR==1) {{ for (i = 1; i<=NF;i++) if ($i=="bwd_best_hit") {{ A=i }}  else {{ if ($i=="bwd_sig") {{ B=i }} }} }} else {{ if ({params.expression}) {{ print $1" "$8 }} }} }}' {input} > {output}
+        mawk '{{ if (NR==1) {{ for (i = 1; i<=NF;i++) if ($i=="best_hit") {{ A=i }}  else {{ if ($i=="bwd_sig") {{ B=i }} }} }} else {{ if ({params.expression}) {{ print $1" "$8 }} }} }}' {input} > {output}
         '''
 
 rule qtltools_replicate:
@@ -174,6 +204,24 @@ rule collate_replicate:
         '''
         while read a b c d e f g h i j k
         do
-          mawk -v C=$a -v D=$f -v p=$j -v s=$k '{{ if (NR==1) {{ for (i = 1; i<=NF;i++) if ($i=="bwd_pval") {{ A=i }}  else {{ if ($i=="bwd_slope") {{ B=i }} }} }} else {{ if ($0~C&&$0~D) {{ print C,D,$A,$B,p,s }} }} }}' {input.qtl} >> {output}
+          mawk -v C=$a -v D=$f -v p=$j -v s=$k '{{ if (NR==1) {{ for (i = 1; i<=NF;i++) if ($i=="nom_pval") {{ A=i }}  else {{ if ($i=="slope") {{ B=i }} }} }} else {{ if ($0~C&&$0~D) {{ pri  nt C,D,$A,$B,p,s }} }} }}' {input.qtl} >> {output}
         done < {input.replication}
         '''
+
+rule qtltools_rtc:
+    input:
+        WGS = expand(rules.qtltools_gather.output,tissue='WGS',_pass='conditionals',MAF=format_MAF(config['MAF']),allow_missing=True),
+        tissue = expand(rules.qtltools_gather.output,_pass='conditionals',MAF=format_MAF(config['MAF']),allow_missing=True),
+        vcf = '',
+        bed = '',
+        cov = '',
+        hotspot = '',
+        IDs = '',
+        qtl = ''
+    output:
+        'replication/{tissue}.rtc.out'
+    shell:
+        '''
+        QTLtools rtc --vcf {input.vcf} --bed {input.bed} --cov {input.cov} --hotspot {input.hotspot} --mergeQTL-cis --window {config[window]} --normal --conditional --mergeQTL-cis {input.IDs} {input.qtl} --chunk {wildcards.chunk} {config[chunks]} --out {output}
+        '''
+
