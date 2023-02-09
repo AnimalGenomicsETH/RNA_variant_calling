@@ -11,11 +11,11 @@ wildcard_constraints:
 def format_MAF(maf):
     return str(maf)[2:].zfill(2)
 
-rule all:
+rule allerst:
     input:
         expand('eQTL/WGS_{tissue}/{_pass}.{MAF}.txt',tissue=config['vcf'],_pass=('conditionals',),MAF=format_MAF(config['MAF'])),
         expand('eQTL/{tissue}_{tissue}/{_pass}.{MAF}.txt',tissue=config['vcf'],_pass=('conditionals',),MAF=format_MAF(config['MAF'])),
-        expand('replication/{tissue}.{mode}.csv',tissue=config['vcf'],mode=('best','all')),
+        expand('replication/{tissue}.{mode}.csv',tissue=config['vcf'],mode=('best',)),
         'ase_metrics.csv'
 
 rule qtltools_ase:
@@ -23,13 +23,16 @@ rule qtltools_ase:
         vcf = 'WGS/autosomes.Unrevised.imputed.vcf.gz',
         bam = 'bam_symlinks/{sample}.{tissue}.bam',
         reference = config['reference'],
-        annotation = 'annotation.bed'
+        annotation = '/cluster/work/pausch/alex/RNA_call_test/Bos_taurus.ARS-UCD1.2.108.chr.gtf'
     output:
         'ase/{sample}.{tissue}.ase',
         'ase/{sample}.{tissue}.metric',
         temp('ase/{sample}.{tissue}.ref_bias')
     params:
         out = lambda wildcards, output: PurePath(output[0]).with_suffix('')
+    threads: 1
+    resources:
+        mem_mb = 10000
     shell:
         '''
         QTLtools ase --bam {input.bam} --vcf {input.vcf} --ind {wildcards.sample} --mapq 10 -f {input.reference} --gtf {input.annotation} --suppress-warnings --pvalue 0.001 --out {params.out}
@@ -39,7 +42,7 @@ rule qtltools_ase:
 localrules: gather_ase
 rule gather_ase:
     input:
-        expand('ase/{sample}.{tissue}.metric',sample=config['samples'],tissue=config['tissues'])
+        expand('ase/{sample}.{tissue}.metric',sample=config['samples'],tissue=('Testis','Epididymis_head','Vas_deferens'))
     output:
         'ase_metrics.csv'
     shell:

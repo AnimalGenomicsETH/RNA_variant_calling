@@ -1,4 +1,4 @@
-rule all:
+rule allaq:
     input:
         'annotated_coverage.bed.gz',
         'genome_coverage.csv'

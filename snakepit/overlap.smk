@@ -1,12 +1,13 @@
 from pathlib import PurePath
 
-rule all:
+rule aller:
     input:
+        'overlaps/Unrevised.none.isec',
         'happy_metrics.csv'
 
 rule bcftools_isec:
     input:
-        lambda wildcards: expand('{vcf}/all.{filter}.vcf.gz',filter=wildcards.filter,vcf=config['vcf'])
+        lambda wildcards: expand('{vcf}/autosomes.{filter}.imputed.vcf.gz',filter=wildcards.filter,vcf=config['vcf'])
     output:
         'overlaps/{filter}.{mode}.txt'
     threads: 4
