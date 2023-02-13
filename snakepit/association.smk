@@ -32,7 +32,8 @@ rule qtltools_ase:
         out = lambda wildcards, output: PurePath(output[0]).with_suffix('')
     threads: 1
     resources:
-        mem_mb = 10000
+        mem_mb = 10000,
+        walltime = '24h'
     shell:
         '''
         QTLtools ase --bam {input.bam} --vcf {input.vcf} --ind {wildcards.sample} --mapq 10 -f {input.reference} --gtf {input.annotation} --suppress-warnings --pvalue 0.001 --out {params.out}
@@ -114,7 +115,7 @@ rule qtltools_parallel:
     threads: 1
     resources:
         mem_mb = 12500,
-        walltime = lambda wildcards: '24:00' if wildcards._pass == 'permutationsX' else '4:00'
+        walltime = lambda wildcards: '24h' if wildcards._pass == 'permutationsX' else '4h'
     shell:
         '''
         QTLtools cis --vcf {input.vcf} --bed {input.bed} --cov {input.cov} {params._pass} {params.grp} --window {config[window]} --normal --chunk {wildcards.chunk} {config[chunks]} --out {output} {params.debug}
@@ -200,7 +201,7 @@ rule qtltools_replicate:
 rule collate_replicate:
     input:
         replication = rules.qtltools_replicate.output,
-        qtl = expand(rules.qtltools_gather.output,tissue='WGS',_pass='conditionals',MAF=format_MAF(config['MAF']),allow_missing=True)
+        qtl = expand(rules.qtltools_gather.output,tissue='WGS',_pass='nominals',MAF=format_MAF(config['MAF']),allow_missing=True)
     output:
         'replication/{expression}.{mode}.csv'
     shell:

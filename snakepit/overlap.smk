@@ -7,7 +7,7 @@ rule aller:
 
 rule bcftools_isec:
     input:
-        lambda wildcards: expand('{vcf}/autosomes.{filter}.imputed.vcf.gz',filter=wildcards.filter,vcf=config['vcf'])
+        lambda wildcards: expand('{vcf}/autosomes.{filter}.imputed.vcf.gz',filter=wildcards.filter,vcf=config['tissues'])
     output:
         'overlaps/{filter}.{mode}.txt'
     threads: 4
@@ -18,14 +18,18 @@ rule bcftools_isec:
         bcftools isec -n +1 --threads {threads} -c {wildcards.mode} -o {output} {input}
         '''
 
+
 rule count_isec:
     input:
-        'overlaps/{filter}.{mode}.txt'
+        isec = 'overlaps/{filter}.{mode}.txt',
+        annotation = 'annotation.bed'
     output:
         'overlaps/{filter}.{mode}.isec'
     shell:
         '''
-        mawk 'length($3)==1&&length($4)==1 {{SNP[$5]+=1;next}} {{INDEL[$5]+=1}} END {{for (key in SNP) {{ print "SNP",key,SNP[key]}} for (key in INDEL) {{ print "INDEL",key,INDEL[key] }} }}' {input} > {output}
+        awk -v OFS="\\t" '{{ print $1,$2,$2+1,$3,$4,$5 }}' {input.isec} |\
+        bedtools intersect -wo -a - -b {input.annotation} |\
+        awk ' {{ if($4~/,/||$5~/,/) {{ ++MA[$10=="intergenic"][$6] }} else {{ if (length($4)==1&&length($5)==1) {{++SNP[$10=="intergenic"][$6]}} else {{++INDEL[$10=="intergenic"][$6]}} }} }} END {{for (key in SNP[0]) {{ print "genic","SNP",key,SNP[0][key] }} for (key in SNP[1]) {{ print "intergenic","SNP",key,SNP[1][key] }} for (key in INDEL[0]) {{ print "genic","INDEL",key,INDEL[0][key] }} for (key in INDEL[1]) {{ print "intergenic","INDEL",key,INDEL[1][key] }} for (key in MA[0]) {{ print "genic","MA",key,MA[0][key]}} for (key in MA[1]) {{ print "intergenic","MA",key,MA[1][key]}} }}' > {output}
         '''
 
 rule make_bed:
