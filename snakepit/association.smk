@@ -26,8 +26,8 @@ rule qtltools_ase:
         annotation = '/cluster/work/pausch/alex/RNA_call_test/Bos_taurus.ARS-UCD1.2.108.chr.gtf'
     output:
         'ase/{sample}.{tissue}.ase',
-        'ase/{sample}.{tissue}.metric',
-        temp('ase/{sample}.{tissue}.ref_bias')
+        #'ase/{sample}.{tissue}.metric',
+        #temp('ase/{sample}.{tissue}.ref_bias')
     params:
         out = lambda wildcards, output: PurePath(output[0]).with_suffix('')
     threads: 1
@@ -37,7 +37,18 @@ rule qtltools_ase:
     shell:
         '''
         QTLtools ase --bam {input.bam} --vcf {input.vcf} --ind {wildcards.sample} --mapq 10 -f {input.reference} --gtf {input.annotation} --suppress-warnings --pvalue 0.001 --out {params.out}
-        awk 'NR>1 {{ print {wildcards.sample},{wildcards.tissue},$21 }}' {output[0]} > {output[1]}
+        awk 'NR>1 {{ print {wildcards.sample},{wildcards.tissue},$21 }}' {output[0]} > {output}
+        '''
+
+localrules: calc_ase
+rule calc_ase:
+    input:
+        'ase/{sample}.{tissue}.ase'
+    output:
+        'ase/{sample}.{tissue}.metric'
+    shell:
+        '''
+        gawk '$21<0.001 {{ ++c; if ($23!="NA") {{ split($23,G,":"); Y[G[1]]; X[G[1]+G[3]] }} }} END {{ print "{wildcards.sample}","{wildcards.tissue}",c,length(Y),length(X) }}' {input} > {output}
         '''
 
 localrules: gather_ase
@@ -48,7 +59,7 @@ rule gather_ase:
         'ase_metrics.csv'
     shell:
         '''
-        cat <(echo -e "sample tissue count") {input} > {output}
+        cat <(echo -e "sample tissue count genic") {input} > {output}
         '''
 
 localrules: concat_genes
