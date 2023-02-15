@@ -59,7 +59,7 @@ rule gather_ase:
         'ase_metrics.csv'
     shell:
         '''
-        cat <(echo -e "sample tissue count genic") {input} > {output}
+        cat <(echo -e "sample tissue count genic transcript") {input} > {output}
         '''
 
 localrules: concat_genes
@@ -183,21 +183,22 @@ rule qtltools_postprocess:
 localrules: prepare_qtl
 rule prepare_qtl:
     input:
-        expand(rules.qtltools_gather.output,tissue='WGS',_pass='conditionals',MAF=format_MAF(config['MAF']),allow_missing=True)
+        wgs = expand(rules.qtltools_gather.output,tissue='WGS',_pass='conditionals',MAF=format_MAF(config['MAF']),allow_missing=True),
+        tissue = lambda wildcards: expand(rules.qtltools_gather.output,tissue=wildcards.expression,_pass='conditionals',MAF=format_MAF(config['MAF']),allow_missing=True)
     output:
-        'replication/{expression}.{mode}.qtl'
-    params:
-        expression = lambda wildcards: '$A&&$B' if wildcards.mode == 'best' else '$B'
+        'replication/{expression}.qtl'
+    #params:
+    #    expression = lambda wildcards: '$A&&$B' if wildcards.mode == 'best' else '$B'
     shell:
         '''
-        mawk '{{ if (NR==1) {{ for (i = 1; i<=NF;i++) if ($i=="best_hit") {{ A=i }}  else {{ if ($i=="bwd_sig") {{ B=i }} }} }} else {{ if ({params.expression}) {{ print $1" "$8 }} }} }}' {input} > {output}
+        mawk '$21&&$22 {{print $1,$8 }}' {input} > {output}
         '''
 
 rule qtltools_replicate:
     input:
         phenotypes = rules.concat_genes.output[0],
         covariates = lambda wildcards: config['covariates'][wildcards.expression],
-        vcf = lambda wildcards: expand(rules.normalise_vcf.output,tissue=wildcards.expression),
+        vcf = lambda wildcards: expand(rules.normalise_vcf.output,tissue=wildcards.mode),
         qtl = rules.prepare_qtl.output
     output:
         'replication/{expression}.{mode}.replicated'
