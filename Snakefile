@@ -7,7 +7,8 @@ rule all:
     input:
         expand('eQTL/WGS_{tissue}/{_pass}.{MAF}.txt',tissue=config['vcf'],_pass=('conditionals',),MAF=format_MAF(config['MAF'])),
         expand('eQTL/{tissue}_{tissue}/{_pass}.{MAF}.txt',tissue=config['vcf'],_pass=('conditionals',),MAF=format_MAF(config['MAF'])),
-        expand('replication/{tissue}.{mode}.csv',tissue=config['vcf'],mode=('best',)),
+        expand('replication/{tissue}.{tissue}.csv',tissue=config['vcf']),
+        expand('replication/{tissue}.WGS.csv',tissue=config['vcf']),
         'ase_metrics.csv',
         'overlaps/Unrevised.none.isec',
         'happy_metrics.csv',

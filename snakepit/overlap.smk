@@ -46,7 +46,7 @@ workflow.singularity_args = f'-B $TMPDIR -B {PurePath(config["reference"]).paren
 
 rule bcftools_split:
     input:
-        '{tissue}/all.Unrevised.vcf.gz'
+        '{tissue}/autosomes.Unrevised.vcf.gz'
     output:
         expand('split_vcfs/{tissue}/{sample}.vcf.gz',sample=config['samples'],allow_missing=True)
     params:

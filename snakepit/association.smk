@@ -77,7 +77,7 @@ rule concat_genes:
 
 rule normalise_vcf:
     input:
-        '{tissue}/all.Unrevised.vcf.gz'
+        '{tissue}/autosomes.Unrevised.vcf.gz'
     output:
         'eQTL/{tissue}/variants.normed.vcf.gz'
     threads: 4
