@@ -1,6 +1,6 @@
 from pathlib import PurePath
 
-rule all:
+rule wallaq:
     input:
         expand('{tissue}/autosomes.Unrevised.imputed.vcf.gz',tissue=config['tissues'])
 

@@ -37,7 +37,6 @@ rule qtltools_ase:
     shell:
         '''
         QTLtools ase --bam {input.bam} --vcf {input.vcf} --ind {wildcards.sample} --mapq 10 -f {input.reference} --gtf {input.annotation} --suppress-warnings --pvalue 0.001 --out {params.out}
-        awk 'NR>1 {{ print {wildcards.sample},{wildcards.tissue},$21 }}' {output[0]} > {output}
         '''
 
 localrules: calc_ase
