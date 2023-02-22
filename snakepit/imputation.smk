@@ -32,7 +32,7 @@ rule beagle5_imputation:
     threads: 24
     resources:
         mem_mb = 3000,
-        walltime = '4:00'
+        walltime = '4h'
     shell:
         '''
         java -jar -Xss25m -Xmx65G /cluster/work/pausch/alex/software/beagle.22Jul22.46e.jar gt={input} nthreads={threads} out={params.prefix}

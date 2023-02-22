@@ -136,7 +136,6 @@ localrules: qtltools_gather, qtltools_postprocess
 rule qtltools_gather:
     input:
         expand(rules.qtltools_parallel.output,chunk=range(0,config['chunks']+1),allow_missing=True)
-        #'eQTL/{tissue}_{expression}/{_pass}.{chunk}.{MAF}.txt',chunk=range(1,config['chunks']+1),allow_missing=True)
     output:
         'eQTL/{tissue}_{expression}/{_pass}.{MAF}.txt'
     resources:
@@ -164,17 +163,15 @@ rule qtltools_FDR:
         Rscript /cluster/work/pausch/alex/software/qtltools/scripts/qtltools_runFDR_cis.R {input} 0.05 {params.out}
         '''
 
+localrules: qtltools_postprocess
 rule qtltools_postprocess:
     input:
-        'eQTL/{tissue}/conditionals.{MAF}.txt'
+        'eQTL/{tissue}_{expression}/conditionals.{MAF}.txt'
     output:
-        'eQTL/{tissue}/significant_hits.{minS}.{MAF}.fastman'
-    params:
-        print_key = lambda wildcards: '$9"\t"($11-$10)"\t"$10"\t"$8"\tN\teQTL\t2\t"$20"\t"$19"\t"$18' if wildcards.tissue != 'eQTL' else '$11"\t"($13-$12)"\t"$12"\t"$10"\tN\teQTL\t2\t"$22"\t"$21"\t"$20'
+        'eQTL/{tissue}_{expression}.{MAF}.genevars.txt'
     shell:
         '''
-        echo "CHR\tsize\tBP\tSNP\tA1\tTEST\tNMISS\tBETA\tSTAT\tP" > {output}
-        awk -v L={wildcards.minS} '($11-$10)>=L {{print {params.print_key}}}' {input} >>  {output}
+        awk '$21 {{ print $1,$8 }}' {input} > {output}
         '''
 
 ### REPLICATION RESULTS
