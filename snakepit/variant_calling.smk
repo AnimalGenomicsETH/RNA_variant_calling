@@ -1,19 +1,75 @@
-
-rule all:
-    input:
-        'subsampled_bams/A.50.bam'
+from pathlib import PurePath
 
 rule samtools_subsample:
     input:
-        bam = 'A.bam'
+        bam = 'subsampled_bams/{tissue}/{sample}.full.bam'
     output:
-        multiext('subsampled_bams/{sample}.{sample_rate}.bam','','.csi')
+        multiext('subsampled_bams/{tissue}/{sample}.{coverage}.bam','','.csi')
     params:
-        sample_rate = lambda wildcards: float(wildcards.sample_rate)/(10**len(wildcards.sample_rate))
+        sample_rate = lambda wildcards: config['coverages'][wildcards.coverage]
     threads: 2
     resources:
         mem_mb = 2500
     shell:
         '''
-        samtools view -@ {threads} -s $(od -N 4 -t uL -An /dev/urandom | tr -d " ").{wildcards.sample_rate} -o {output[0]} --write-index {input}
+        samtools view -@ {threads} -s $(od -N 4 -t uL -An /dev/urandom | tr -d " ").{params.sample_rate} -o {output[0]} --write-index {input}
         '''
+
+rule DeepVariant_call:
+    input:
+        config = 'config/analysis.yaml',
+        bams = expand(rules.samtools_subsample.output[0],sample=config['samples'],allow_missing=True)
+    output:
+        '{tissue}_{coverage}/all.Unrevised.vcf.gz'
+    params:
+        model = lambda wildcards: 'WGS' if wildcards.tissue == 'WGS' else '/cluster/work/pausch/alex/REF_DATA/RNA_DV_models/model.ckpt'
+    threads: 1
+    resources:
+        mem_mb = 2500,
+        walltime = '48h'
+    shell:
+        '''
+        snakemake -s /cluster/work/pausch/alex/BSW_analysis/snakepit/deepvariant.smk --configfile {input.config} \
+                --config Run_name="{wildcards.tissue}_{wildcards.coverage}" -C bam_path="subsampled_bams/{wildcards.tissue}" bam_name="{{sample}}.{wildcards.coverage}.bam" model="{params.model}" \
+                --profile "slurm/fullNT" --singularity-args "-B /nfs/nas12.ethz.ch/fs1201/green_groups_tg_public/data"
+        '''
+
+rule bcftools_view:
+    input:
+        rules.DeepVariant_call.output
+    output:
+        '{tissue}_{coverage}/autosomes.Unrevised.vcf.gz'
+    params:
+        autosomes = ','.join(map(str,range(1,30)))
+    threads: 4
+    resources:
+        mem_mb = 1500
+    shell:
+        '''
+        bcftools view --threads {threads} --regions {params.autosomes} -o {output} {input}
+        tabix -p vcf {output}
+        '''
+
+rule beagle5_imputation:
+    input:
+        rules.bcftools_view.output
+    output:
+        multiext('{tissue}_{coverage}/autosomes.imputed.vcf.gz','','.tbi')
+    params:
+        prefix = lambda wildcards, output: PurePath(output[0]).with_suffix('').with_suffix(''),
+        name = lambda wildcards, output: PurePath(output[0]).name
+    threads: 24
+    resources:
+        mem_mb = 3000,
+        walltime = '4h'
+    shell:
+        '''
+        java -jar -Xss25m -Xmx65G /cluster/work/pausch/alex/software/beagle.22Jul22.46e.jar gt={input} nthreads={threads} out={params.prefix}
+        mv {output[0]} $TMPDIR/{params.name}
+        bcftools reheader -f {config[reference]}.fai -o {output[0]} $TMPDIR/{params.name}
+        tabix -fp vcf {output[0]}
+        '''
+
+
+
+
