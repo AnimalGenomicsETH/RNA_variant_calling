@@ -30,8 +30,8 @@ rule DeepVariant_call:
     shell:
         '''
         snakemake -s /cluster/work/pausch/alex/BSW_analysis/snakepit/deepvariant.smk --configfile {input.config} \
-                --config Run_name="{wildcards.tissue}_{wildcards.coverage}" -C bam_path="subsampled_bams/{wildcards.tissue}" bam_name="{{sample}}.{wildcards.coverage}.bam" model="{params.model}" \
-                --profile "slurm/fullNT" --singularity-args "-B /nfs/nas12.ethz.ch/fs1201/green_groups_tg_public/data"
+                --config Run_name="{wildcards.tissue}_{wildcards.coverage}" bam_path="subsampled_bams/{wildcards.tissue}/" bam_name="{{sample}}.{wildcards.coverage}.bam" model="{params.model}" \
+                --profile "slurm/fullNT" --nolock
         '''
 
 rule bcftools_view:
