@@ -6,7 +6,7 @@ rule samtools_subsample:
     output:
         multiext('subsampled_bams/{tissue}/{sample}.{coverage}.bam','','.csi')
     params:
-        sample_rate = lambda wildcards: config['coverages'][wildcards.coverage]
+        sample_rate = lambda wildcards: str(config['coverages'][wildcards.coverage])[2:]
     threads: 2
     resources:
         mem_mb = 2500
@@ -30,7 +30,7 @@ rule DeepVariant_call:
     shell:
         '''
         snakemake -s /cluster/work/pausch/alex/BSW_analysis/snakepit/deepvariant.smk --configfile {input.config} \
-                --config Run_name="{wildcards.tissue}_{wildcards.coverage}" bam_path="subsampled_bams/{wildcards.tissue}/" bam_name="{{sample}}.{wildcards.coverage}.bam" model="{params.model}" \
+                --config Run_name="{wildcards.tissue}_{wildcards.coverage}" bam_path="subsampled_bams/{wildcards.tissue}/" bam_index=".csi" bam_name="{{sample}}.{wildcards.coverage}.bam" model="{params.model}" \
                 --profile "slurm/fullNT" --nolock
         '''
 
