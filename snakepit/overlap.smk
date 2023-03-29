@@ -1,15 +1,10 @@
 from pathlib import PurePath
 
-rule aller:
-    input:
-        'overlaps/Unrevised.none.isec',
-        'happy_metrics.csv'
-
 rule bcftools_isec:
     input:
-        lambda wildcards: expand('{vcf}/autosomes.{filter}.imputed.vcf.gz',filter=wildcards.filter,vcf=config['tissues'])
+        lambda wildcards: expand('{tissue}_{coverage}/autosomes.{imputed}.vcf.gz',tissue=config['tissues'],allow_missing=True)
     output:
-        'overlaps/{filter}.{mode}.txt'
+        'overlaps/{imputed}.{mode}.{coverage}.txt'
     threads: 4
     resources:
         mem_mb = 1500
@@ -18,13 +13,12 @@ rule bcftools_isec:
         bcftools isec -n +1 --threads {threads} -c {wildcards.mode} -o {output} {input}
         '''
 
-
 rule count_isec:
     input:
-        isec = 'overlaps/{filter}.{mode}.txt',
+        isec = rules.bcftools_isec.output,
         annotation = 'annotation.bed'
     output:
-        'overlaps/{filter}.{mode}.isec'
+        'overlaps/{imputed}.{mode}.{coverage}.isec'
     shell:
         '''
         awk -v OFS="\\t" '{{ print $1,$2,$2+1,$3,$4,$5 }}' {input.isec} |\
@@ -34,9 +28,9 @@ rule count_isec:
 
 rule make_bed:
     input:
-        'overlaps/{filter}.{mode}.txt'
+        rules.bcftools_isec.output
     output:
-        expand('overlaps/{filter}.{mode}.{sample}.bed',sample=config['vcf'],allow_missing=True)
+        expand('overlaps/{imputed}.{mode}.{coverage}.bed',sample=config['vcf'],allow_missing=True)
     shell:
         '''
         awk '{{print $1,$2,$2+1}}' {input} > {output}
@@ -46,9 +40,9 @@ workflow.singularity_args = f'-B $TMPDIR -B {PurePath(config["reference"]).paren
 
 rule bcftools_split:
     input:
-        '{tissue}/autosomes.Unrevised.vcf.gz'
+        '{tissue}_{coverage}/autosomes.{imputed}.vcf.gz'
     output:
-        expand('split_vcfs/{tissue}/{sample}.vcf.gz',sample=config['samples'],allow_missing=True)
+        expand('split_vcfs/{tissue}_{coverage}/{sample}.{imputed}.vcf.gz',sample=config['samples'],allow_missing=True)
     params:
         _dir = lambda wildcards, output: PurePath(output[0]).parent
     resources:
@@ -60,11 +54,11 @@ rule bcftools_split:
 
 rule happy:
     input:
-        vcfs = lambda wildcards: expand('split_vcfs/{tissues}/{sample}.vcf.gz',tissues=('WGS',wildcards.tissue),allow_missing=True),
+        vcfs = lambda wildcards: expand('split_vcfs/{tissue}_{coverage}/{sample}.{imputed}.vcf.gz',tissues=('WGS',wildcards.tissue),allow_missing=True),
         reference = config['reference']
     output:
-        csv = 'happy/{sample}.{tissue}.summary.csv',
-        others = temp(multiext('happy/{sample}.{tissue}','.bcf','.bcf.csi','.extended.csv','.roc.all.csv.gz','.runinfo.json'))
+        csv = 'F1/{sample}.{tissue}.{coverage}.{imputed}.summary.csv',
+        others = temp(multiext('F1/{sample}.{tissue}.{coverage}.{imputed}','.bcf','.bcf.csi','.extended.csv','.roc.all.csv.gz','.runinfo.json'))
     params:
         _dir = lambda wildcards, output: PurePath(output.csv).with_suffix('').with_suffix('')
     container: '/cluster/work/pausch/alex/software/images/hap.py_latest.sif'
@@ -77,12 +71,12 @@ rule happy:
         /opt/hap.py/bin/hap.py -r {input.reference} --bcf --usefiltered-truth --no-roc --no-json -L --pass-only --scratch-prefix $TMPDIR -X --threads {threads} -o {params._dir} {input.vcfs}
         '''
 
-localrules: gather_happy
 rule gather_happy:
     input:
-        expand('happy/{sample}.{tissue}.summary.csv',sample=config['samples'],tissue=('Testis','Epididymis_head','Vas_deferens'))
+        expand(rules.happy.output[0],sample=config['samples'],tissue=('Testis','Epididymis_head','Vas_deferens'),allow_missing=True)
     output:
-        'happy_metrics.csv'
+        'F1/happy.{coverage}.{imputed}.csv'
+    localrule: True
     shell:
         '''
         echo -e "variant truth query recall precision truth_TiTv query_TiTv sample tissue" > {output}
