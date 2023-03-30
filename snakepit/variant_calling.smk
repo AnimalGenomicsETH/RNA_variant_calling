@@ -22,7 +22,8 @@ rule DeepVariant_call:
     output:
         '{tissue}_{coverage}/all.Unrevised.vcf.gz'
     params:
-        model = lambda wildcards: 'WGS' if wildcards.tissue == 'WGS' else '/cluster/work/pausch/alex/REF_DATA/RNA_DV_models/model.ckpt'
+        model = lambda wildcards: 'WGS' if wildcards.tissue == 'WGS' else '/cluster/work/pausch/alex/REF_DATA/RNA_DV_models/model.ckpt',
+        _index = lambda wildcards: '.bai' if wildcards.coverage == 'full' else '.csi'
     threads: 1
     resources:
         mem_mb = 2500,
@@ -30,7 +31,7 @@ rule DeepVariant_call:
     shell:
         '''
         snakemake -s /cluster/work/pausch/alex/BSW_analysis/snakepit/deepvariant.smk --configfile {input.config} \
-                --config Run_name="{wildcards.tissue}_{wildcards.coverage}" bam_path="subsampled_bams/{wildcards.tissue}/" bam_index=".csi" bam_name="{{sample}}.{wildcards.coverage}.bam" model="{params.model}" \
+                --config Run_name="{wildcards.tissue}_{wildcards.coverage}" bam_path="subsampled_bams/{wildcards.tissue}/" bam_index="{params._index}" bam_name="{{sample}}.{wildcards.coverage}.bam" model="{params.model}" \
                 --profile "slurm/fullNT" --nolock
         '''
 
