@@ -16,6 +16,18 @@ rule perbase_depth:
         #awk -v W={params.window} '$1~/^[0-9]/' {{ A[$1][int($2/W)]+=($3-$2)*$4 }} END {{ for (chr in A) {{ for (window in A[chr]) {{ print chr,window*W,window*W+W,A[chr][window] }} }} }}' > {output}
         #'''
 
+rule missing_genes:
+    input:
+        bed = rules.perbase_depth.output,
+        annotation = 'annotation.bed'
+    output:
+        'coverage/{tissue}/{sample}.{coverage}.missing_genes.bed'
+    shell:
+        '''
+        bedtools intersect -sorted -a {input.bed} -b {input.annotation} | awk '$4>100' | bedtools merge -i - -d 100 > {output}
+        bedtools slop -b 10000 -i protein_coding.bed -g ../REF_DATA/ARS-UCD1.2_Btau5.0.1Y.fa.fai | bedtools subtract -sorted -b - -a coverage/BSWCHEM120154151075.Vas_deferens.bed.gz | awk '$4>200' | bedtools merge -i - -d 100 | awk '($3-$2)>2000 {print $1":"$2"-"$3}' > candidates.txt
+        '''
+
 rule estimate_coverage:
     input:
        rules.perbase_depth.output

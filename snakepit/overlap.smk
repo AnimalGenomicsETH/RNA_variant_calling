@@ -2,7 +2,8 @@ from pathlib import PurePath
 
 rule bcftools_isec:
     input:
-        lambda wildcards: expand('{tissue}_{coverage}/autosomes.{imputed}.vcf.gz',tissue=config['tissues'],allow_missing=True)
+        tissues = lambda wildcards: expand('{tissue}_{coverage}/autosomes.{imputed}.vcf.gz',tissue=config['tissues'],allow_missing=True),
+        WGS = lambda wildcards: expand('WGS_full/autosomes.{imputed}.vcf.gz',allow_missing=True)
     output:
         'overlaps/{imputed}.{mode}.{coverage}.txt'
     threads: 4
@@ -42,7 +43,7 @@ rule bcftools_split:
     input:
         '{tissue}_{coverage}/autosomes.{imputed}.vcf.gz'
     output:
-        expand('split_vcfs/{tissue}_{coverage}/{sample}.{imputed}.vcf.gz',sample=config['samples'],allow_missing=True)
+        expand('split_vcfs/{tissue}_{coverage}_{imputed}/{sample}.vcf.gz',sample=config['samples'],allow_missing=True)
     params:
         _dir = lambda wildcards, output: PurePath(output[0]).parent
     resources:
@@ -54,7 +55,8 @@ rule bcftools_split:
 
 rule happy:
     input:
-        vcfs = lambda wildcards: expand('split_vcfs/{tissue}_{coverage}/{sample}.{imputed}.vcf.gz',tissues=('WGS',wildcards.tissue),allow_missing=True),
+        vcf_tissue = lambda wildcards: expand('split_vcfs/{tissue}_{coverage}_{imputed}/{sample}.vcf.gz',tissues=wildcards.tissue,allow_missing=True),
+        vcf_WGS = lambda wildcards: expand('split_vcfs/WGS_full_{imputed}/{sample}.vcf.gz',allow_missing=True),
         reference = config['reference']
     output:
         csv = 'F1/{sample}.{tissue}.{coverage}.{imputed}.summary.csv',
@@ -62,13 +64,13 @@ rule happy:
     params:
         _dir = lambda wildcards, output: PurePath(output.csv).with_suffix('').with_suffix('')
     container: '/cluster/work/pausch/alex/software/images/hap.py_latest.sif'
-    threads: 4
+    threads: 2
     resources:
-        mem_mb = 500,
-        sratch = '10G'
+        mem_mb = 1000,
+        scratch = '10G'
     shell:
         '''
-        /opt/hap.py/bin/hap.py -r {input.reference} --bcf --usefiltered-truth --no-roc --no-json -L --pass-only --scratch-prefix $TMPDIR -X --threads {threads} -o {params._dir} {input.vcfs}
+        /opt/hap.py/bin/hap.py -r {input.reference} --bcf --usefiltered-truth --no-roc --no-json -L --pass-only --scratch-prefix $TMPDIR -X --threads {threads} -o {params._dir} {input.vcf_WGS} {input.vcf_tissue}
         '''
 
 rule gather_happy:
