@@ -42,9 +42,8 @@ rule featurecounts:
         walltime = '4h'
     shell:
         '''
-        "/cluster/home/xmapel/miniconda3/envs/featurecounts/bin/featureCounts -O -M -p -T {threads} -t exon -g gene_id --fraction -Q 60 -s 2 --primary --tmpDir $TMPDIR -a {input.gft} -o {output[0]} {input.bams}
+        /cluster/home/xmapel/miniconda3/envs/featurecounts/bin/featureCounts -O -M -p -T {threads} -t exon -g gene_id --fraction -Q 60 -s 2 --primary --tmpDir $TMPDIR -a {input.gft} -o {output[0]} {input.bams}
         '''
-
 
 rule filter_TPM:
     input:
@@ -67,14 +66,16 @@ rule filter_TPM:
  14 testis_tpm = testis_tpm[testis_tpm$gene %in% fc_testis_good$Geneid,]
         '''
 
-rule PEER:
+rule qtltools_pca:
     input:
-        ''
+        lambda wildcards: 'bed' if wildcards.mode == 'bed' else 'vcf'
     output:
-        ''
+        multiext('covariates/{tissue}.{coverage}.{mode}','.pca','.pca_stats')
+    params:
+        prefix = lambda wildcards, output: PurePath(output[0]).with_suffix('')
     shell:
         '''
-        ? I thought this was vcf based ?
+        QTLtools pca --{wildcards.mode} {input} --out {params.prefix} --center --scale
         '''
 
 rule make_covariates:
@@ -84,6 +85,7 @@ rule make_covariates:
         ''
     shell:
         '''
+        #ADD age and RIN (fixed)
         '''
 
 
