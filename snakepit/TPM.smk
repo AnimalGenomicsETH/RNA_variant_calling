@@ -1,99 +1,121 @@
+from pathlib import PurePath
+
+rule all:
+    input:
+        'aligned_genes/Testis/gene_TPM.full.tsv'
+
 rule qtltools_quan:
     input:
-        gtf = '',
-        bam = 'subsampled_bams/'
+        gtf = config['GTF'],
+        bam = 'subsampled_bams/{tissue}/{sample}.{coverage}.bam'
     output:
-        stat = '',
-        tpm = ''
+        temp(multiext('aligned_genes/{tissue}/{sample}.{coverage}','.gene.tpm.bed','.gene.count.bed','.exon.tpm.bed','.exon.count.bed','.stats'))
+    params:
+        prefix = lambda wildcards, output: PurePath(output[4]).with_suffix('')
+    threads: 1
+    resources:
+        mem_mb = 2500,
+        waltime = '30m'
     shell:
         '''
-         QTLtools quan --bam {input.bam} --gtf {input.gtf} --sample {wildcards.sample} --out-prefix {params.prefix} --filter-mapping-quality 60 --tpm --check-proper-pairing --filter-failed-qc
+         QTLtools quan --bam {input.bam} --gtf {input.gtf} --sample {wildcards.sample} --out-prefix {params.prefix} --filter-mapping-quality 60 --tpm --check-proper-pairing --no-hash --filter-failed-qc
          '''
 
 rule combine_quan:
     input:
-        ''
+        expand(rules.qtltools_quan.output[0],sample=config['samples'],allow_missing=True)
     output:
-        ''
+        temp('aligned_genes/{tissue}/gene_TPM.{coverage}.tsv.gz')
+    params:
+        slices = lambda wildcards, input:  '1-7,' + ','.join(map(str,range(14,len(input)*7+1,7)))
     localrule: True
     shell:
         '''
-        input_path=/cluster/work/pausch/xena/eQTL/RNA_alignment/vas_d/star_aligned
- 59 output_path=/cluster/work/pausch/xena/eQTL/gene_counts/all_samples/vas_d
- 60 
- 61 cat ${output_path}/BSWCHEM120145055733.LmWzrHf25Mj.gene.tpm.bed  | cut -f1-6 > ${output_path}/anno_info
- 62 for bam in `ls ${input_path}`
- 63 do  
- 64     cat ${output_path}/${bam}.R0BRiR1nnu.gene.tpm.bed | cut -f7 > ${output_path}/${bam}_temp_quant
- 65 done
- 66 
- 67 paste -d "\t" ${output_path}/anno_info ${output_path}/*_temp_quant > ${output_path}/FINAL_gene_TPM.tsv
+        paste {input} | cut -f {params.slices} | pigz -p 2 -c > {output}
         '''
 
 rule featurecounts:
     input:
-        gtf = '',
-        bams = ''
+        gtf = config['GTF'],
+        bams = expand('subsampled_bams/{tissue}/{sample}.{coverage}.bam',sample=config['samples'],allow_missing=True)
     output:
-        ''
-    threads: 2
+        temp(multiext('aligned_genes/{tissue}/genes.{coverage}.FC','','.summary'))
+    threads: 16
     resources:
-        mem_mb = 2500,
-        walltime = '4h'
+        mem_mb = 100,
+        walltime = '1h'
     shell:
         '''
-        /cluster/home/xmapel/miniconda3/envs/featurecounts/bin/featureCounts -O -M -p -T {threads} -t exon -g gene_id --fraction -Q 60 -s 2 --primary --tmpDir $TMPDIR -a {input.gft} -o {output[0]} {input.bams}
+        /cluster/work/pausch/alex/software/subread-2.0.4-source/src/featureCounts -O -M -p -T {threads} -t exon -g gene_id --fraction -Q 60 -s 2 --primary --tmpDir $TMPDIR -a {input.gtf} -o {output} {input.bams}
         '''
+
+import pandas as pd
+import subprocess
+from tempfile import NamedTemporaryFile
 
 rule filter_TPM:
     input:
-        quan = rules.combine_quan.output,
-        FC = rules.featurecounts.output
+        quan = rules.combine_quan.output[0],
+        FC = rules.featurecounts.output[0]
     output:
-        ''
+        temp(multiext('aligned_genes/{tissue}/gene_counts.{coverage}.gz','','.tbi'))
+    localrule: True
+    run:
+        TPM = pd.read_csv(input.quan,delimiter='\t',low_memory=False)
+        good_TPM = TPM[((TPM.iloc[:,7:]>= 0.1).sum(axis=1) / (TPM.shape[1]-6)) >= 0.2]
+        FC = pd.read_csv(input.FC,delimiter='\t',low_memory=False,skiprows=1)
+        good_FC = FC[((FC.iloc[:,7:] >= 6).sum(axis=1) / (FC.shape[1]-6)) >= 0.2]
+        with NamedTemporaryFile(mode='w') as fout:
+            good_TPM[good_TPM['gene'].isin(good_FC['Geneid'])].sort_values(['#chr', 'start']).to_csv(fout,index=False,sep='\t')
+            subprocess.run(f'bgzip -c {fout.name} > {output[0]};tabix -p bed {output[0]}', shell=True)
+
+rule bcftools_prune:
+    input:
+        '{tissue}_{coverage}/autosomes.imputed.vcf.gz'
+    output:
+        temp(multiext('{tissue}_{coverage}/autosomes.pruned.vcf.gz','','.tbi'))
+    resources:
+        mem_mb = 2500
     shell:
         '''
-        testis_tpm <- read.table("/cluster/work/pausch/xena/eQTL/gene_counts/testis/UNFILTERED_gene_TPM.tsv", header=T)
-  5 fc_testis <- read.table("/cluster/work/pausch/xena/eQTL/gene_counts/testis/featurecounts/featurecounts_testis", header =T)
-  6
-  7 #Raw TPM
-  8 ##Testis filtering
-  9 remove <- c("BSWCHEM120119981594", "BSWCHEM120134766497", "BSWCHEM120135927712", "BSWCHEM120144952301", "BSWCHEM120146480749", "BSWCHEM120149770120", "BSWCHEM120150918900", "BSWCHEM120153327877", "BSWCHEM120153643403", "BSWCHEM120155307242", "BSWCHEM120151536851", "BSWDEUM00955    2586445")
- 10
- 11 testis_tpm = testis_tpm[,!(names(testis_tpm) %in% remove)]
- 12 testis_tpm <- testis_tpm[rowSums(testis_tpm[,c(7:123)] >= 0.1) / (ncol(testis_tpm)-6) >= 0.2,]
- 13 fc_testis_good <- fc_testis[rowSums(fc_testis[,c(7:123)] >= 6) / (ncol(fc_testis)-6) >= 0.2,]
- 14 testis_tpm = testis_tpm[testis_tpm$gene %in% fc_testis_good$Geneid,]
+        bcftools +prune -o {output[0]} -w 1000kb -n 5 -m r2=0.2 {input}
+        tabix -fp vcf {output[0]}
         '''
 
 rule qtltools_pca:
     input:
-        lambda wildcards: 'bed' if wildcards.mode == 'bed' else 'vcf'
+        lambda wildcards: rules.filter_TPM.output if wildcards.mode == 'bed' else rules.bcftools_prune.output
     output:
-        multiext('covariates/{tissue}.{coverage}.{mode}','.pca','.pca_stats')
+        temp(multiext('covariates/{tissue}.{coverage}.{mode}','.pca','.pca_stats'))
     params:
         prefix = lambda wildcards, output: PurePath(output[0]).with_suffix('')
+    resources:
+        mem_mb = lambda wildcards: 1024 if wildcards.mode == 'bed' else 10000,
+        walltime = '30m'
     shell:
         '''
-        QTLtools pca --{wildcards.mode} {input} --out {params.prefix} --center --scale
+        QTLtools pca --{wildcards.mode} {input[0]} --out {params.prefix} --center --scale
+        '''
+
+#fakeish rule, since original covariates are hardcoded should just run this manually
+rule make_fixed_covariates:
+    output:
+        temp(expand('covariates/{tissue}.fixed.txt',tissue=('Epididymis_head','Testis','Vas_deferens')))
+    shell:
+        '''
+        ../RNA_variant_calling/make_fixed.sh
         '''
 
 rule make_covariates:
     input:
-        ''
+        pca_expression = expand(rules.qtltools_pca.output,mode='bed',allow_missing=True),
+        pca_variants = expand(rules.qtltools_pca.output,mode='vcf',allow_missing=True),
+        constants = rules.make_fixed_covariates.output
     output:
-        ''
+        multiext('covariates/{tissue}.{coverage}.txt.gz','','.tbi')
+    localrule: True
     shell:
         '''
-        #ADD age and RIN (fixed)
+        {{ cat {input.constants} ; awk 'NR>1 && NR<5' {input.pca_expression} ; awk 'NR>1 && NR<12' {input.pca_variants} ; }} |
+        pigz -c > {output}
         '''
-
-
-# STEP 4: Filtering (R)
-##### let me remake this so itll work in snakemake #####
-
-
-# STEP 5: PEER Factors 
-
-
-# STEP 6: 
