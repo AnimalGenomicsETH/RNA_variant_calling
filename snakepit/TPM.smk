@@ -1,7 +1,7 @@
 rule qtltools_quan:
     input:
         gtf = '',
-        bam = ''
+        bam = 'subsampled_bams/'
     output:
         stat = '',
         tpm = ''
