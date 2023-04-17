@@ -11,6 +11,7 @@ wildcard_constraints:
 
 
 include: 'snakepit/variant_calling.smk'
+include: 'snakepit/TPM.smk'
 include: 'snakepit/association.smk'
 include: 'snakepit/overlap.smk'
 include: 'snakepit/coverage.smk'
@@ -24,11 +25,11 @@ rule all:
         expand('overlaps/imputed.none.{coverage}.isec',coverage=config['coverages']),
         expand('F1/happy.{coverage}.{imputed}.csv',coverage=config['coverages'],imputed=('Unrevised','imputed')),
         ## Bam coverage/ASE
-        expand('coverage/annotated.{coverage}.bed.gz',coverage=config['coverages']),
-        expand('coverage/genome.{coverage}.csv',coverage=config['coverages']),
-        expand('ase/metrics.{coverage}.csv',coverage=config['coverages']),
+        #expand('coverage/annotated.{coverage}.bed.gz',coverage=config['coverages']),
+        #expand('coverage/genome.{coverage}.csv',coverage=config['coverages']),
+        #expand('ase/metrics.{coverage}.csv',coverage=config['coverages']),
         ## eQTL analysis
-        expand('eQTL/WGS_{coverage}_{tissue}/conditionals.{MAF}.txt.gz',tissue=config['vcf'],MAF=format_MAF(config['MAF']),coverage=config['coverages']),
-        expand('eQTL/{tissue}_{coverage}_{tissue}/conditionals.{MAF}.txt.gz',tissue=config['vcf'],MAF=format_MAF(config['MAF']),coverage=config['coverages']),
-        expand('replication/{tissue}.{tissue}.{coverage}.replicated',tissue=config['vcf'],coverage=config['coverages']),
-        expand('replication/{tissue}.WGS.{coverage}.replicated',tissue=config['vcf'],coverage=config['coverages'])
+        #expand('eQTL/WGS_{coverage}_{tissue}/conditionals.{MAF}.txt.gz',tissue=config['vcf'],MAF=format_MAF(config['MAF']),coverage=config['coverages']),
+        #expand('eQTL/{tissue}_{coverage}_{tissue}/conditionals.{MAF}.txt.gz',tissue=config['vcf'],MAF=format_MAF(config['MAF']),coverage=config['coverages']),
+        #expand('replication/{tissue}.{tissue}.{coverage}.replicated',tissue=config['vcf'],coverage=config['coverages']),
+        #expand('replication/{tissue}.WGS.{coverage}.replicated',tissue=config['vcf'],coverage=config['coverages'])

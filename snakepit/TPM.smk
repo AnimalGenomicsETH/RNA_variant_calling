@@ -1,8 +1,7 @@
 from pathlib import PurePath
-
-rule all:
-    input:
-        'aligned_genes/Testis/gene_TPM.full.tsv'
+import pandas as pd
+import subprocess
+from tempfile import NamedTemporaryFile
 
 rule qtltools_quan:
     input:
@@ -46,12 +45,8 @@ rule featurecounts:
         walltime = '1h'
     shell:
         '''
-        /cluster/work/pausch/alex/software/subread-2.0.4-source/src/featureCounts -O -M -p -T {threads} -t exon -g gene_id --fraction -Q 60 -s 2 --primary --tmpDir $TMPDIR -a {input.gtf} -o {output} {input.bams}
+        /cluster/work/pausch/alex/software/subread-2.0.4-source/src/featureCounts -O -M -p -T {threads} -t exon -g gene_id --fraction -Q 60 -s 2 --primary --tmpDir $TMPDIR -a {input.gtf} -o {output[0]} {input.bams}
         '''
-
-import pandas as pd
-import subprocess
-from tempfile import NamedTemporaryFile
 
 rule filter_TPM:
     input:
@@ -101,6 +96,7 @@ rule qtltools_pca:
 rule make_fixed_covariates:
     output:
         temp(expand('covariates/{tissue}.fixed.txt',tissue=('Epididymis_head','Testis','Vas_deferens')))
+    localrule: True
     shell:
         '''
         ../RNA_variant_calling/make_fixed.sh
@@ -112,10 +108,11 @@ rule make_covariates:
         pca_variants = expand(rules.qtltools_pca.output,mode='vcf',allow_missing=True),
         constants = rules.make_fixed_covariates.output
     output:
-        multiext('covariates/{tissue}.{coverage}.txt.gz','','.tbi')
+        'covariates/{tissue}.{coverage}.txt.gz'
     localrule: True
     shell:
         '''
-        {{ cat {input.constants} ; awk 'NR>1 && NR<5' {input.pca_expression} ; awk 'NR>1 && NR<12' {input.pca_variants} ; }} |
-        pigz -c > {output}
+        {{ cat {input.constants} ; awk 'NR>1 && NR<5' {input.pca_expression} ; awk 'NR>1 && NR<12' {input.pca_variants} ; }} |\
+        sed 's/ /\\t/g' |\
+        pigz -p 2 -c > {output[0]}
         '''
