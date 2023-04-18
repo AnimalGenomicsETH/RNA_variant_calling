@@ -104,15 +104,17 @@ rule make_fixed_covariates:
 
 rule make_covariates:
     input:
-        pca_expression = lambda wildcards: expand(rules.qtltools_pca.output[0],mode='bed',tissue=wildcards.expression,coverage=wildcards.exp_coverage,allow_missing=True),
-        pca_variants = expand(rules.qtltools_pca.output[0],mode='vcf',allow_missing=True),
+        pca_expression = lambda wildcards: expand(rules.qtltools_pca.output,mode='bed',tissue=wildcards.expression,coverage=wildcards.exp_coverage,allow_missing=True),
+        pca_variants = expand(rules.qtltools_pca.output,mode='vcf',allow_missing=True),
         fixed = rules.make_fixed_covariates.output
     output:
         'covariates/{tissue}.{coverage}.{expression}.{exp_coverage}.txt.gz'
     localrule: True
     shell:
         '''
-        {{ cat {input.fixed} ; awk 'NR>1 && NR<5' {input.pca_expression} ; awk 'NR>1 && NR<12' {input.pca_variants} ; }} |\
+        EXP=$(grep -oP "#Thresh995 criterion: PC #\K\d+" {input.pca_expression[1]})
+        VAR=$(grep -oP "#Thresh995 criterion: PC #\K\d+" {input.pca_variants[1]})
+        {{ cat {input.fixed} ; awk -v T=$EXP 'NR>1 && NR<=(T+1)' {input.pca_expression[0]} ; awk -v T=$VAR 'NR>1 && NR<=(T+1)' {input.pca_variants[0]} ; }} |\
         sed 's/ /\\t/g' |\
         pigz -p 2 -c > {output[0]}
         '''
