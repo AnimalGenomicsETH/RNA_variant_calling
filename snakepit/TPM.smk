@@ -53,7 +53,7 @@ rule filter_TPM:
         quan = rules.combine_quan.output[0],
         FC = rules.featurecounts.output[0]
     output:
-        temp(multiext('aligned_genes/{tissue}/gene_counts.{coverage}.gz','','.tbi'))
+        temp(multiext('aligned_genes/{tissue}/gene_counts.{coverage}.bed.gz','','.tbi'))
     localrule: True
     run:
         TPM = pd.read_csv(input.quan,delimiter='\t',low_memory=False)
@@ -62,7 +62,7 @@ rule filter_TPM:
         good_FC = FC[((FC.iloc[:,7:] >= 6).sum(axis=1) / (FC.shape[1]-6)) >= 0.2]
         with NamedTemporaryFile(mode='w') as fout:
             good_TPM[good_TPM['gene'].isin(good_FC['Geneid'])].sort_values(['#chr', 'start']).to_csv(fout,index=False,sep='\t')
-            subprocess.run(f'bgzip -c {fout.name} > {output[0]};tabix -p bed {output[0]}', shell=True)
+            subprocess.run(f'bgzip -c {fout.name} > {output[0]}; tabix -p bed {output[0]}', shell=True)
 
 rule bcftools_prune:
     input:
@@ -95,24 +95,24 @@ rule qtltools_pca:
 #fakeish rule, since original covariates are hardcoded should just run this manually
 rule make_fixed_covariates:
     output:
-        temp(expand('covariates/{tissue}.fixed.txt',tissue=('Epididymis_head','Testis','Vas_deferens')))
+        temp('covariates/{expression}.fixed.txt')#,tissue=('Epididymis_head','Testis','Vas_deferens')))
     localrule: True
     shell:
         '''
-        ../RNA_variant_calling/make_fixed.sh
+        ../RNA_variant_calling/make_fixed.sh {wildcards.expression}
         '''
 
 rule make_covariates:
     input:
-        pca_expression = expand(rules.qtltools_pca.output,mode='bed',allow_missing=True),
-        pca_variants = expand(rules.qtltools_pca.output,mode='vcf',allow_missing=True),
-        constants = rules.make_fixed_covariates.output
+        pca_expression = lambda wildcards: expand(rules.qtltools_pca.output[0],mode='bed',tissue=wildcards.expression,coverage=wildcards.exp_coverage,allow_missing=True),
+        pca_variants = expand(rules.qtltools_pca.output[0],mode='vcf',allow_missing=True),
+        fixed = rules.make_fixed_covariates.output
     output:
-        'covariates/{tissue}.{coverage}.txt.gz'
+        'covariates/{tissue}.{coverage}.{expression}.{exp_coverage}.txt.gz'
     localrule: True
     shell:
         '''
-        {{ cat {input.constants} ; awk 'NR>1 && NR<5' {input.pca_expression} ; awk 'NR>1 && NR<12' {input.pca_variants} ; }} |\
+        {{ cat {input.fixed} ; awk 'NR>1 && NR<5' {input.pca_expression} ; awk 'NR>1 && NR<12' {input.pca_variants} ; }} |\
         sed 's/ /\\t/g' |\
         pigz -p 2 -c > {output[0]}
         '''
