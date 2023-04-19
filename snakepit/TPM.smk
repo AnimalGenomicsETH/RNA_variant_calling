@@ -112,8 +112,8 @@ rule make_covariates:
     localrule: True
     shell:
         '''
-        EXP=$(grep -oP "#Thresh995 criterion: PC #\K\d+" {input.pca_expression[1]})
-        VAR=$(grep -oP "#Thresh995 criterion: PC #\K\d+" {input.pca_variants[1]})
+        EXP=10#$(grep -oP "#Thresh995 criterion: PC #\K\d+" {input.pca_expression[1]})
+        VAR=3#$(grep -oP "#Thresh995 criterion: PC #\K\d+" {input.pca_variants[1]})
         {{ cat {input.fixed} ; awk -v T=$EXP 'NR>1 && NR<=(T+1)' {input.pca_expression[0]} ; awk -v T=$VAR 'NR>1 && NR<=(T+1)' {input.pca_variants[0]} ; }} |\
         sed 's/ /\\t/g' |\
         pigz -p 2 -c > {output[0]}
