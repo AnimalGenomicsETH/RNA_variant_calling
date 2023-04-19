@@ -46,19 +46,6 @@ rule gather_ase:
         cat <(echo -e "sample tissue count genic transcript") {input} > {output}
         '''
 
-rule concat_genes:
-    input:
-        lambda wildcards: expand('/cluster/work/pausch/xena/eQTL/gene_counts/{tissue_code}/QTLtools/{chromosome}_gene_counts.gz',chromosome=range(1,30),tissue_code={'Testis':'testis','Epididymis_head':'epi_h','Vas_deferens':'vas_d'}[wildcards.expression])
-    output:
-        'aligned_genes/{expression}.bed.gz',
-        'aligned_genes/{expression}.bed.gz.tbi' 
-    localrule: True
-    shell:
-        '''
-        zcat {input} | sort -u -k1,1n -k2,2n | bgzip -@ 2 -c > {output[0]}
-        tabix -p bed {output[0]}
-        '''
-
 rule normalise_vcf:
     input:
         '{tissue}_{coverage}/autosomes.imputed.vcf.gz'
@@ -98,13 +85,14 @@ rule qtltools_parallel:
     input:
         vcf = rules.normalise_vcf.output,
         exclude = rules.exclude_MAF.output,
-        bed = rules.concat_genes.output,
-        cov = lambda wildcards: config['covariates'][wildcards.expression],
+        bed = lambda wildcards: expand(rules.filter_TPM.output[0],tissue=wildcards.expression,coverage=wildcards.exp_coverage,allow_missing=True),
+        cov = rules.make_covariates.output,
         mapping = lambda wildcards: rules.qtltools_FDR.output if wildcards._pass == 'conditionals' else []
     output:
-        merged = temp('eQTL/{tissue}_{coverage}_{expression}/{_pass}.{chunk}.{MAF}.txt.gz')
+        merged = temp('eQTL/{tissue}_{coverage}_{expression}_{exp_coverage}/{_pass}.{chunk}.{MAF}.txt.gz')
     params:
         _pass = lambda wildcards,input: get_pass(wildcards._pass,input)
+    localrule: lambda wildcards: wildcards._pass == 'conditionals'
     threads: 1
     resources:
         mem_mb = 5500,
@@ -118,19 +106,18 @@ rule qtltools_gather:
     input:
         expand(rules.qtltools_parallel.output,chunk=range(0,config['chunks']+1),allow_missing=True)
     output:
-        'eQTL/{tissue}_{coverage}_{expression}/{_pass}.{MAF}.txt.gz'
+        'eQTL/{tissue}_{coverage}_{expression}_{exp_coverage}/{_pass}.{MAF}.txt.gz'
     localrule: True
     shell:
         '''
         LC_ALL=C; pigz -p 2 -dc {input} | sort --parallel=2 -k9,9n -k10,10n | pigz -p 2 -c > {output}
-        sort {params.sort_key} {input} > {output}
         '''
 
 rule qtltools_FDR:
     input:
         expand(rules.qtltools_gather.output,_pass='permutations',allow_missing=True)
     output:
-        'eQTL/{tissue}_{coverage}_{expression}/permutations_all.{MAF}.thresholds.txt'
+        'eQTL/{tissue}_{coverage}_{expression}_{exp_coverage}/permutations_all.{MAF}.thresholds.txt'
     params:
         out = lambda wildcards, output: PurePath(output[0]).with_suffix('').with_suffix('')
     envmodules:
@@ -139,6 +126,7 @@ rule qtltools_FDR:
     shell:
         '''
         Rscript /cluster/work/pausch/alex/software/qtltools/scripts/qtltools_runFDR_cis.R {input} 0.05 {params.out}
+        #/cluster/work/pausch/alex/software/qtltools/scripts/fastcis.py {input} 0.05 {params.out}
         '''
 
 ### REPLICATION RESULTS
@@ -159,7 +147,7 @@ rule prepare_qtl:
 
 rule qtltools_replicate:
     input:
-        phenotypes = rules.concat_genes.output[0],
+        phenotypes = rules.filter_TPM.output[1],
         covariates = lambda wildcards: config['covariates'][wildcards.expression],
         vcf = lambda wildcards: expand(rules.normalise_vcf.output,tissue=wildcards.mode,coverage=wildcards.coverage),
         qtl = rules.prepare_qtl.output
