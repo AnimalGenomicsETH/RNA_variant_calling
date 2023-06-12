@@ -31,7 +31,7 @@ rule make_bed:
     input:
         rules.bcftools_isec.output
     output:
-        expand('overlaps/{imputed}.{mode}.{coverage}.bed',sample=config['vcf'],allow_missing=True)
+        expand('overlaps/{imputed}.{mode}.{coverage}.bed',sample=config['tissues'],allow_missing=True)
     shell:
         '''
         awk '{{print $1,$2,$2+1}}' {input} > {output}
@@ -57,33 +57,65 @@ rule happy:
     input:
         vcf_tissue = lambda wildcards: expand('split_vcfs/{tissue}_{coverage}_{imputed}/{sample}.vcf.gz',tissues=wildcards.tissue,allow_missing=True),
         vcf_WGS = lambda wildcards: expand('split_vcfs/WGS_full_{imputed}/{sample}.vcf.gz',allow_missing=True),
-        reference = config['reference']
+        reference = config['reference'],
+        regions = 'happy/regions.tsv'
     output:
         csv = 'F1/{sample}.{tissue}.{coverage}.{imputed}.summary.csv',
         others = temp(multiext('F1/{sample}.{tissue}.{coverage}.{imputed}','.bcf','.bcf.csi','.extended.csv','.roc.all.csv.gz','.runinfo.json'))
     params:
         _dir = lambda wildcards, output: PurePath(output.csv).with_suffix('').with_suffix('')
     container: '/cluster/work/pausch/alex/software/images/hap.py_latest.sif'
-    threads: 2
+    threads: 1
     resources:
-        mem_mb = 1000,
+        mem_mb = 5000,
         scratch = '10G'
     shell:
         '''
-        /opt/hap.py/bin/hap.py -r {input.reference} --bcf --usefiltered-truth --no-roc --no-json -L --pass-only --scratch-prefix $TMPDIR -X --threads {threads} -o {params._dir} {input.vcf_WGS} {input.vcf_tissue}
+        /opt/hap.py/bin/hap.py -r {input.reference} --bcf --usefiltered-truth --no-roc --no-json -L --pass-only --scratch-prefix $TMPDIR -X --threads 2 -o {params._dir} --stratification {input.regions} {input.vcf_WGS} {input.vcf_tissue}
         '''
 
 rule gather_happy:
     input:
-        expand(rules.happy.output[0],sample=config['samples'],tissue=('Testis','Epididymis_head','Vas_deferens'),allow_missing=True)
+        #need to consider extended
+        expand(rules.happy.output['others'][2],sample=config['samples'],tissue=config['tissues'],allow_missing=True)
     output:
         'F1/happy.{coverage}.{imputed}.csv'
     localrule: True
     shell:
         '''
-        echo -e "variant truth query recall precision truth_TiTv query_TiTv sample tissue" > {output}
+        echo -e "variant region truth query recall precision truth_TiTv query_TiTv F1_score sample tissue" > {output}
         for i in {input}
         do
-          awk -v I=$(basename $i) -F',' '$2=="PASS" {{ split(I,a,"."); print $1,$3,$6,$10,$11,$14,$15,a[1],a[2] }}' $i >> {output}
+          awk -v I=$(basename $i) -F',' '$2=="*"&&($3=="others"||$3=="exons")&&$4=="PASS" {{ split(I,a,"."); print $1,$3,$17,$38,$8,$9,$22,$43,$11,a[1],a[2] }}' $i >> {output}
         done
+        '''
+
+
+## ASE analysis
+rule ASE_analysis:
+    input:
+        ase = 'ase/{sample}.{tissue}.ase',
+        happy = 'F1/{sample}.{tissue}.{coverage}.imputed.bcf',
+        exons = 'happy/exons.bed'
+    output:
+        'ase/{sample}.{tissue}.{coverage}.csv'
+    resources:
+        mem_mb = 5000
+    shell:
+        '''
+        bedtools intersect -wao \
+        -a <(bcftools view -H -R {input.exons} -i 'FORMAT/BVT[0]=="SNP"&FORMAT/BLT[0]=="het"&FORMAT/BD!="TP"' {input.happy} | awk -v OFS='\\t' '{{ print $1,$2,$2+1,substr($11,0,3)}}') \
+        -b <(awk -v OFS='\\t' 'NR>1 {{ print $3,$4,$4+1,$21,$13/($11+$12) }}' {input.ase}) |\
+        awk -v S={wildcards.sample} -v T={wildcards.tissue} -v C={wildcards.coverage} '$6!=-1 {{ print S,T,$4,$8,$9}} END {{print S,T,"0","0","0",NR}}' > {output}
+        '''
+
+rule gather_ASE:
+    input:
+        expand(rules.ASE_analysis.output,sample=config['samples'],tissue=config['tissues'],coverage=('full',))
+    output:
+        'ase/ASE.csv.gz'
+    localrule: True
+    shell:
+        '''
+        {{ echo "sample tissue GT pval ASE het_errors" ; cat {input} ; }} | pigz -p 2 -c > {output}
         '''
