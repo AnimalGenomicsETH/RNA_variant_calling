@@ -27,7 +27,7 @@ rule DeepVariant_call:
     threads: 1
     resources:
         mem_mb = 2500,
-        walltime = '48h'
+        walltime = '24h'
     shell:
         '''
         snakemake -s /cluster/work/pausch/alex/BSW_analysis/snakepit/deepvariant.smk --configfile {input.config} \
@@ -59,7 +59,7 @@ rule beagle5_imputation:
     params:
         prefix = lambda wildcards, output: PurePath(output[0]).with_suffix('').with_suffix(''),
         name = lambda wildcards, output: PurePath(output[0]).name
-    threads: 24
+    threads: 8
     resources:
         mem_mb = 3000,
         walltime = '4h'
@@ -70,7 +70,3 @@ rule beagle5_imputation:
         bcftools reheader -f {config[reference]}.fai -o {output[0]} $TMPDIR/{params.name}
         tabix -fp vcf {output[0]}
         '''
-
-
-
-

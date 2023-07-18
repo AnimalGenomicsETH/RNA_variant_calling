@@ -5,7 +5,7 @@ def format_MAF(maf):
 
 rule qtltools_ase:
     input:
-        vcf = '{tissue}_{coverage}/autosomes.imputed.vcf.gz',
+        vcf = 'WGS_{coverage}/autosomes.imputed.vcf.gz',
         bam = 'subsampled_bams/{tissue}/{sample}.{coverage}.bam',
         reference = config['reference'],
         annotation = '/cluster/work/pausch/alex/RNA_call_test/Bos_taurus.ARS-UCD1.2.108.chr.gtf'
@@ -21,7 +21,7 @@ rule qtltools_ase:
         walltime = '24h'
     shell:
         '''
-        QTLtools ase --bam {input.bam} --vcf {input.vcf} --ind {wildcards.sample} --mapq 10 -f {input.reference} --gtf {input.annotation} --suppress-warnings --pvalue 0.001 --out {params.out}
+        QTLtools ase --bam {input.bam} --vcf {input.vcf} --ind {wildcards.sample} --both-alleles-seen --mapq 10 -f {input.reference} --gtf {input.annotation} --suppress-warnings --pvalue 0.001 --out {params.out}
         '''
 
 rule calc_ase:
