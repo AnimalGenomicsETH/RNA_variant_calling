@@ -14,6 +14,9 @@ rule bcftools_isec:
         bcftools isec -n +1 --threads {threads} -c {wildcards.mode} -o {output} {input}
         '''
 
+#awk '$5=="1110" {print $3,$4}' overlaps/imputed.none.full.txt | grep -v "," | awk 'length($0)==3' | sort | uniq -c
+#awk '$5=="1110" {print $3,$4}' overlaps/imputed.none.full.txt | grep -v "," | awk 'length($0)>3 {print length($1)-length($2)}' | sort | uniq -c | sort -k2,2nr | less
+
 rule count_isec:
     input:
         isec = rules.bcftools_isec.output,
@@ -94,7 +97,7 @@ rule gather_happy:
 ## ASE analysis
 rule ASE_analysis:
     input:
-        ase = 'ase/{sample}.{tissue}.ase',
+        ase = 'ase/{sample}.{tissue}.{coverage}.ase',
         happy = 'F1/{sample}.{tissue}.{coverage}.imputed.bcf',
         exons = 'happy/exons.bed'
     output:
@@ -105,14 +108,14 @@ rule ASE_analysis:
         '''
         bedtools intersect -wao \
         -a <(bcftools view -H -R {input.exons} -i 'FORMAT/BVT[0]=="SNP"&FORMAT/BLT[0]=="het"&FORMAT/BD!="TP"' {input.happy} | awk -v OFS='\\t' '{{ print $1,$2,$2+1,substr($11,0,3)}}') \
-        -b <(awk -v OFS='\\t' 'NR>1 {{ print $3,$4,$4+1,$21,$13/($11+$12) }}' {input.ase}) |\
-        awk -v S={wildcards.sample} -v T={wildcards.tissue} -v C={wildcards.coverage} '$6!=-1 {{ print S,T,$4,$8,$9,"0"}} END {{print S,T,"0","0","0",NR}}' > {output}
+        -b <(awk -v OFS='\\t' 'NR>1 {{ print $3,$4,$4+1,$21,$13/($11+$12),($8-$9)/$10 }}' {input.ase}) |\
+        awk -v S={wildcards.sample} -v T={wildcards.tissue} -v C={wildcards.coverage} '$6!=-1 {{ print S,T,$4,$8,$9,$10,"0"}} END {{print S,T,"0","0","0","0",NR}}' > {output}
 
 
         bedtools intersect -wo \
         -a <(bcftools view -H -R {input.exons} -i 'FORMAT/BVT[0]=="SNP"&FORMAT/BLT[0]=="het"&FORMAT/BD=="TP"' {input.happy} | awk -v OFS='\\t' '{{ print $1,$2,$2+1,substr($11,0,3)}}') \
-        -b <(awk -v OFS='\\t' 'NR>1 {{ print $3,$4,$4+1,$21,$13/($11+$12) }}' {input.ase}) |\
-        awk -v S={wildcards.sample} -v T={wildcards.tissue} -v C={wildcards.coverage} '$6!=-1 {{ print S,T,$4,$8,$9,"0"}}' >> {output}
+        -b <(awk -v OFS='\\t' 'NR>1 {{ print $3,$4,$4+1,$21,$13/($11+$12),($8-$9)/$10 }}' {input.ase}) |\
+        awk -v S={wildcards.sample} -v T={wildcards.tissue} -v C={wildcards.coverage} '$6!=-1 {{ print S,T,$4,$8,$9,$10,"0"}}' >> {output}
         '''
 
 rule gather_ASE:
@@ -123,5 +126,8 @@ rule gather_ASE:
     localrule: True
     shell:
         '''
-        {{ echo "sample tissue GT pval ASE het_errors" ; cat {input} ; }} | pigz -p 2 -c > {output}
+        {{ echo "sample tissue GT pval ASE_adjusted ASE_raw het_errors" ; cat {input} ; }} | pigz -p 2 -c > {output}
         '''
+
+#rule qtltools_pca:
+#    QTLtools pca --vcf genotypes.chr22.vcf.gz --out genotypes.chr22 --center --scale --maf 0.05 --distance 5000
