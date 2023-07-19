@@ -33,9 +33,11 @@ rule estimate_coverage:
        rules.perbase_depth.output
     output:
         'coverage/{tissue}/{sample}.{coverage}.genome_coverage.csv'
+    resources:
+        walltime = '20m'
     shell:
         '''
-        zcat {input} | mawk -v S={wildcards.sample} -v T={wildcards.tissue} -v OFS="\\t" '$1~/^[0-9]/ {{ c+=($3-$2) }} END {{ print S,T,c }}' > {output}
+        zcat {input} | mawk -v S={wildcards.sample} -v T={wildcards.tissue} -v OFS="\\t" '$1~/^[0-9]/ {{ c+=($3-$2); d+=($3-$2)*($4>1) }} END {{ print S,T,c,d }}' > {output}
         '''
 
 rule collate_coverage:
@@ -46,7 +48,7 @@ rule collate_coverage:
     localrule: True
     shell:
         '''
-        cat <(echo -e "sample\\ttissue\\tcoverage") {input} > {output}
+        cat <(echo -e "sample\\ttissue\\tcoverage\\tcoverage >1") {input} > {output}
         '''
 
 
