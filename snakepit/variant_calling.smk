@@ -61,7 +61,7 @@ rule beagle5_imputation:
         name = lambda wildcards, output: PurePath(output[0]).name
     threads: 8
     resources:
-        mem_mb = 3000,
+        mem_mb = 6000,
         walltime = '4h'
     shell:
         '''

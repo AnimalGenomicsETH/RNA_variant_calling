@@ -71,7 +71,8 @@ rule happy:
     threads: 1
     resources:
         mem_mb = 5000,
-        scratch = '10G'
+        scratch = '10G',
+        walltime = '24h'
     shell:
         '''
         /opt/hap.py/bin/hap.py -r {input.reference} --bcf --usefiltered-truth --no-roc --no-json -L --pass-only --scratch-prefix $TMPDIR -X --threads 2 -o {params._dir} --stratification {input.regions} {input.vcf_WGS} {input.vcf_tissue}
@@ -80,7 +81,8 @@ rule happy:
 rule gather_happy:
     input:
         #need to consider extended
-        expand(rules.happy.output['others'][2],sample=config['samples'],tissue=config['tissues'],allow_missing=True)
+        #expand(rules.happy.output['others'][2],sample=config['samples'],tissue=config['tissues'],allow_missing=True)
+        lambda wildcards: expand(rules.happy.output['others'][2],sample=config['samples'],tissue=(config['tissues'] if wildcards.coverage not in ['hundred','thirty'] else config['bams']),allow_missing=True)
     output:
         'F1/happy.{coverage}.{imputed}.csv'
     localrule: True
