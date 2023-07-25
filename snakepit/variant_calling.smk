@@ -70,3 +70,36 @@ rule beagle5_imputation:
         bcftools reheader -f {config[reference]}.fai -o {output[0]} $TMPDIR/{params.name}
         tabix -fp vcf {output[0]}
         '''
+
+rule vep_download:
+    output:
+        directory('vep/bos_taurus')
+    params:
+        lambda wildcards, output: PurePath(output[0]).parent
+    localrule: True
+    shell:
+        '''
+        export TMPDIR=/cluster/scratch/alleonard
+        curl -o $TMPDIR/bos_taurus.tar.gz https://ftp.ensembl.org/pub/release-110/variation/indexed_vep_cache/bos_taurus_vep_110_ARS-UCD1.2.tar.gz
+        tar xzf $TMPDIR/bos_taurus.tar.gz -C {parmas}
+        '''
+
+rule vep_annotate:
+    input:
+        vcf = rules.beagle5_imputation.output,
+        vep = rules.vep_download.output[0]
+    output:
+        'vep/{tissue}.{coverage}.vep'
+    params:
+        lambda wildcards, input: PurePath(input.vep).parent
+    threads: 4
+    resources:
+        mem_mb = 1250
+    container: '/cluster/work/pausch/alex/software/images/ensembl-vep_latest.sif'
+    shell:
+        '''
+        export LC_ALL=C
+        vep -i {input.vcf[0]} --tab --fields "Consequence,IMPACT" --species bos_taurus --offline --no_headers --no_stats --dir {params} --output_file STDOUT --fork {threads} |\
+        mawk '{{ split($1,c,","); for (k in c) {{ ++CSQ[c[k]"_"$2] }} }} END {{ for (k in CSQ) {{ print k,CSQ[k] }} }}' |\
+        sed 's/\(.*\)_/\\1 /' > {output}
+        '''
