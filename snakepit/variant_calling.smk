@@ -20,7 +20,7 @@ rule DeepVariant_call:
         config = 'config/analysis.yaml',
         bams = expand(rules.samtools_subsample.output[0],sample=config['samples'],allow_missing=True)
     output:
-        '{tissue}_{coverage}/all.Unrevised.vcf.gz'
+        multiext('{tissue}_{coverage}/all.Unrevised.vcf.gz','','.tbi')
     params:
         model = lambda wildcards: 'WGS' if wildcards.tissue == 'WGS' else '/cluster/work/pausch/alex/REF_DATA/RNA_DV_models/model.ckpt',
         _index = lambda wildcards: '.bai' if wildcards.coverage == 'full' else '.csi'
@@ -47,7 +47,7 @@ rule bcftools_view:
         mem_mb = 1500
     shell:
         '''
-        bcftools view --threads {threads} --regions {params.autosomes} -o {output} {input}
+        bcftools view --threads {threads} --regions {params.autosomes} -o {output} {input[0]}
         tabix -p vcf {output}
         '''
 

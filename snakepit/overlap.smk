@@ -40,7 +40,7 @@ rule make_bed:
         awk '{{print $1,$2,$2+1}}' {input} > {output}
         '''
 
-workflow.singularity_args = f'-B $TMPDIR -B {PurePath(config["reference"]).parent}'
+workflow._singularity_args = f'-B $TMPDIR -B {PurePath(config["reference"]).parent}'
 
 rule bcftools_split:
     input:
@@ -131,5 +131,5 @@ rule gather_ASE:
         {{ echo "sample tissue GT pval ASE_adjusted ASE_raw het_errors" ; cat {input} ; }} | pigz -p 2 -c > {output}
         '''
 
-#rule qtltools_pca:
-#    QTLtools pca --vcf genotypes.chr22.vcf.gz --out genotypes.chr22 --center --scale --maf 0.05 --distance 5000
+# bcftools query -f '%CHROM\t%POS\n' Vas_deferens_full/autosomes.imputed.vcf.gz| awk -v OFS='\t' '{print $1,$2,$2+1}' | bedtools merge -i - -d 10000 > Vas_deferens_variant_cover.bed
+#for i in WGS Testis Epididymis_head Vas_deferens; do bedtools genomecov -g <(head -n 29 ../REF_DATA/ARS-UCD1.2_Btau5.0.1Y.fa.fai | cut -f -2) -i ${i}_variant_cover.bed  | awk -v T=${i} '$2==1 {print T,$1,$5}'; done
