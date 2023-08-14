@@ -51,7 +51,7 @@ rule bcftools_view:
         tabix -p vcf {output}
         '''
 
-rule beagle5_imputation:
+rule beagle4_imputation:
     input:
         rules.bcftools_view.output
     output:
@@ -62,10 +62,10 @@ rule beagle5_imputation:
     threads: 8
     resources:
         mem_mb = 6000,
-        walltime = '4h'
+        walltime = lambda wildcards: '24h' if wildcards.tissue != 'WGS' else '48h'
     shell:
         '''
-        java -jar -Xss25m -Xmx65G /cluster/work/pausch/alex/software/beagle.22Jul22.46e.jar gt={input} nthreads={threads} out={params.prefix}
+        java -jar -Xss25m -Xmx40G /cluster/work/pausch/alex/software/beagle.27Jan18.7e1.jar gl={input} nthreads={threads} out={params.prefix}
         mv {output[0]} $TMPDIR/{params.name}
         bcftools reheader -f {config[reference]}.fai -o {output[0]} $TMPDIR/{params.name}
         tabix -fp vcf {output[0]}
@@ -86,7 +86,7 @@ rule vep_download:
 
 rule vep_annotate:
     input:
-        vcf = rules.beagle5_imputation.output,
+        vcf = rules.beagle4_imputation.output,
         vep = rules.vep_download.output[0]
     output:
         'vep/{tissue}.{coverage}.vep'
