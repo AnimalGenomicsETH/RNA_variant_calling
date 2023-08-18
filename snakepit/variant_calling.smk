@@ -71,6 +71,24 @@ rule beagle4_imputation:
         tabix -fp vcf {output[0]}
         '''
 
+rule plink_PCA:
+    input:
+        rules.beagle4_imputation.output[0]
+        #'{tissue}_{coverage}/autosomes.pruned.vcf.gz'
+    output:
+        multiext('PCA/{tissue}.{coverage}','.eigenval','.eigenvec','.log')
+    params:
+        prefix = lambda wildcards, output: PurePath(output[0]).with_suffix(''),
+        maf = 0.05
+    threads: 1
+    resources:
+        mem_mb = 10000,
+        walltime = '30m'
+    shell:
+        '''
+        plink2 --pca --vcf {input} --out {params.prefix} --cow --maf {params.maf} --threads {threads} --vcf-half-call m
+        '''
+
 rule vep_download:
     output:
         directory('vep/bos_taurus')
