@@ -95,6 +95,40 @@ rule gather_happy:
         done
         '''
 
+rule covered_by_variants:
+    input:
+        vcf = '{tissue}_{coverage}/autosomes.{imputed}.vcf.gz',
+        genome = config['reference'] + '.fai'
+    output:
+        variants = 'coverage/{tissue}.{coverage}.{imputed}.variant.bed',
+        covered = 'coverage/{tissue}.{coverage}.{imputed}.variant.csv'
+    params:
+        window = 1000
+    threads: 1
+    resources:
+        mem_mb = 7500
+    shell:
+        '''
+        bcftools query -f '%CHROM\\t%POS\\n' {input.vcf} |\
+        awk -v OFS='\\t' '{{print $1,$2,$2+1}}' |\
+        bedtools merge -i - -d {params.window} |\
+        bedtools slop -g <(head -n 29 {input.genome} | cut -f -2)  -b {params.window} -i - > {output.variants}
+
+        bedtools genomecov -g <(head -n 29 {input.genome} | cut -f -2) -i {output.variants} | awk '$2==1 {{print "{wildcards.tissue}","{wildcards.coverage}","{wildcards.imputed}",$1,$5}}' > {output.covered}
+        '''
+
+rule gather_covered:
+    input:
+        #expand(rules.covered_by_variants.output['covered'],tissue=config['bams'],coverage=config['coverages'],imputed=('imputed','panel'))
+        expand(rules.covered_by_variants.output['covered'],tissue=config['bams'],coverage=('full',),imputed=('imputed','panel'))
+    output:
+        'coverage/variants.csv'
+    localrule: True
+    shell:
+        '''
+        echo "tissue coverage imputed chromosome covered" > {output}
+        cat {input} >> {output}
+        '''
 
 ## ASE analysis
 rule ASE_analysis:
@@ -130,6 +164,3 @@ rule gather_ASE:
         '''
         {{ echo "sample tissue GT pval ASE_adjusted ASE_raw het_errors" ; cat {input} ; }} | pigz -p 2 -c > {output}
         '''
-
-# bcftools query -f '%CHROM\t%POS\n' Vas_deferens_full/autosomes.imputed.vcf.gz| awk -v OFS='\t' '{print $1,$2,$2+1}' | bedtools merge -i - -d 10000 > Vas_deferens_variant_cover.bed
-#for i in WGS Testis Epididymis_head Vas_deferens; do bedtools genomecov -g <(head -n 29 ../REF_DATA/ARS-UCD1.2_Btau5.0.1Y.fa.fai | cut -f -2) -i ${i}_variant_cover.bed  | awk -v T=${i} '$2==1 {print T,$1,$5}'; done
