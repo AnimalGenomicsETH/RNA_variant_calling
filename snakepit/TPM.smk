@@ -66,20 +66,21 @@ rule filter_TPM:
 
 rule bcftools_prune:
     input:
-        '{tissue}_{coverage}/autosomes.imputed.vcf.gz'
+        rules.beagle4_imputation.output
+        #'{tissue}_{coverage}/autosomes.imputed.vcf.gz'
     output:
         temp(multiext('{tissue}_{coverage}/autosomes.pruned.vcf.gz','','.tbi'))
     resources:
         mem_mb = 2500
     shell:
         '''
-        bcftools +prune -o {output[0]} -w 1000kb -n 5 -m r2=0.2 {input}
+        bcftools +prune -o {output[0]} -w 1000kb -n 5 -m r2=0.2 {input[0]}
         tabix -fp vcf {output[0]}
         '''
 
 rule qtltools_pca:
     input:
-        lambda wildcards: rules.filter_TPM.output if wildcards.mode == 'bed' else rules.bcftools_prune.output
+        lambda wildcards: rules.filter_TPM.output if wildcards.mode == 'bed' else (rules.bcftools_prune.output if wildcards.tissue == 'WGS' else rules.beagle4_imputation.output)
     output:
         temp(multiext('covariates/{tissue}.{coverage}.{mode}','.pca','.pca_stats'))
     params:
