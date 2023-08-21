@@ -71,6 +71,26 @@ rule beagle4_imputation:
         tabix -fp vcf {output[0]}
         '''
 
+rule beagle5_panel_imputation:
+    input:
+        vcf = rules.beagle4_imputation.output,
+        panel = 'panel.vcf.gz'
+    output:
+        multiext('{tissue}_{coverage}/autosomes.panel.vcf.gz','','.tbi')
+    params:
+        prefix = lambda wildcards, output: PurePath(output[0]).with_suffix('').with_suffix(''),
+        name = lambda wildcards, output: PurePath(output[0]).name
+    threads: 4
+    resources:
+        mem_mb = 5000
+    shell:
+        '''
+        java -jar -Xss25m -Xmx40G /cluster/work/pausch/alex/software/beagle.22Jul22.46e.jar ref={input.panel} gt={input.vcf[0]} nthreads={threads} out={params.prefix}
+        mv {output[0]} $TMPDIR/{params.name}
+        bcftools reheader -f {config[reference]}.fai -o {output[0]} $TMPDIR/{params.name}
+        tabix -fp vcf {output[0]}
+        '''
+
 rule plink_PCA:
     input:
         rules.beagle4_imputation.output[0]
