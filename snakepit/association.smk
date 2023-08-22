@@ -139,30 +139,30 @@ rule mismatched_QTL:
     shell:
         '''
 
-        for i in $(find eQTL -type d -name '*_*_*_*'); do cp ${i}/conditionals.01.txt.gz ${i}.conditionals.txt.gz; done
+        for i in $(find eQTL -type d -name '*_*_*_*'); do cp ${{i}}/conditionals.01.txt.gz ${{i}}.conditionals.csv.gz; done
 
-        echo -e "tissue\\teGene\\tWGS threshold\\tWGS pval\\tRNA threshold\\tRNA pval"
+        echo -e "tissue\\teGene\\tWGS threshold\\tWGS pval\\tRNA threshold\\tRNA pval" > {output}
 
 coverage="full"
 for tissue in Testis Vas_deferens Epididymis_head
 do
   for variants in WGS $tissue
   do
-    zcat ${{variants}}_${{coverage}}_${{tissue}}_${{coverage}}/conditionals.01.txt.gz | awk 'NR>1 {{print $1}}' | sort -u > ${{variants}}_${{tissue}}.uniq
+    zcat eQTL/${{variants}}_${{coverage}}_${{tissue}}_${{coverage}}/conditionals.01.txt.gz | awk 'NR>1 {{print $1}}' | sort -u > eQTL/${{variants}}_${{tissue}}.uniq
   done
-    comm -23 WGS_${{tissue}}.uniq ${{tissue}}_${{tissue}}.uniq > ${{tissue}}.WGS.only
-    comm -13 WGS_${{tissue}}.uniq ${{tissue}}_${{tissue}}.uniq > ${{tissue}}.${{tissue}}.only
+    comm -23 eQTL/WGS_${{tissue}}.uniq eQTL/${{tissue}}_${{tissue}}.uniq > eQTL/${{tissue}}.WGS.only
+    comm -13 eQTL/WGS_${{tissue}}.uniq eQTL/${{tissue}}_${{tissue}}.uniq > eQTL/${{tissue}}.${{tissue}}.only
 
   while read G
   do
-    echo -ne "${{tissue}}\\t$G\\t"
+    echo -ne "${{tissue}}\\t$G\\t" >> {output}
     for variants in WGS ${{tissue}}
     do
-      grep -hF $G ${{variants}}_${{coverage}}_${{tissue}}_${{coverage}}/permutations_all.01.thresholds.txt | awk '{{printf $2"\\t"}}'
-      zgrep -hF $G ${{variants}}_${{coverage}}_${{tissue}}_${{coverage}}/permutations.01.txt.gz | awk '{{printf $16"\\t"}}'
+      grep -hF $G eQTL/${{variants}}_${{coverage}}_${{tissue}}_${{coverage}}/permutations_all.01.thresholds.txt | awk '{{printf $2"\\t"}}' >> {output}
+      zgrep -hF $G eQTL/${{variants}}_${{coverage}}_${{tissue}}_${{coverage}}/permutations.01.txt.gz | awk '{{printf $16"\\t"}}' >> {output}
     done
-  echo
-  done < <(cat  ${{tissue}}.${{tissue}}.only  ${{tissue}}.WGS.only)
+  echo >> {output}
+  done < <(cat  eQTL/${{tissue}}.${{tissue}}.only  eQTL/${{tissue}}.WGS.only)
 
 done
         '''
