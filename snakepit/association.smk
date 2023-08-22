@@ -129,6 +129,44 @@ rule qtltools_FDR:
         #/cluster/work/pausch/alex/software/qtltools/scripts/fastcis.py {input} 0.05 {params.out}
         '''
 
+rule mismatched_QTL:
+    input:
+        expand('eQTL/WGS_full_{tissue}_{coverage}/conditionals.{MAF}.txt.gz',tissue=config['tissues'],MAF=format_MAF(config['MAF']),coverage=config['coverages']),
+        expand('eQTL/{tissue}_{coverage}_{tissue}_{coverage}/conditionals.{MAF}.txt.gz',tissue=config['tissues'],MAF=format_MAF(config['MAF']),coverage=config['coverages'])
+    output:
+        'eQTL/mismatched_genes.csv'
+    localrule: True
+    shell:
+        '''
+
+        for i in $(find eQTL -type d -name '*_*_*_*'); do cp ${i}/conditionals.01.txt.gz ${i}.conditionals.txt.gz; done
+
+        echo -e "tissue\\teGene\\tWGS threshold\\tWGS pval\\tRNA threshold\\tRNA pval"
+
+coverage="full"
+for tissue in Testis Vas_deferens Epididymis_head
+do
+  for variants in WGS $tissue
+  do
+    zcat ${{variants}}_${{coverage}}_${{tissue}}_${{coverage}}/conditionals.01.txt.gz | awk 'NR>1 {{print $1}}' | sort -u > ${{variants}}_${{tissue}}.uniq
+  done
+    comm -23 WGS_${{tissue}}.uniq ${{tissue}}_${{tissue}}.uniq > ${{tissue}}.WGS.only
+    comm -13 WGS_${{tissue}}.uniq ${{tissue}}_${{tissue}}.uniq > ${{tissue}}.${{tissue}}.only
+
+  while read G
+  do
+    echo -ne "${{tissue}}\\t$G\\t"
+    for variants in WGS ${{tissue}}
+    do
+      grep -hF $G ${{variants}}_${{coverage}}_${{tissue}}_${{coverage}}/permutations_all.01.thresholds.txt | awk '{{printf $2"\\t"}}'
+      zgrep -hF $G ${{variants}}_${{coverage}}_${{tissue}}_${{coverage}}/permutations.01.txt.gz | awk '{{printf $16"\\t"}}'
+    done
+  echo
+  done < <(cat  ${{tissue}}.${{tissue}}.only  ${{tissue}}.WGS.only)
+
+done
+        '''
+
 ### REPLICATION RESULTS
 
 rule prepare_qtl:
