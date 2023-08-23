@@ -109,7 +109,7 @@ rule covered_by_variants:
         mem_mb = 7500
     shell:
         '''
-        bcftools query -f '%CHROM\\t%POS\\n' {input.vcf} |\
+        bcftools query -i 'GT[*]="alt"' -f '%CHROM\\t%POS\\n' {input.vcf} |\
         awk -v OFS='\\t' '{{print $1,$2,$2+1}}' |\
         bedtools merge -i - -d {params.window} |\
         bedtools slop -g <(head -n 29 {input.genome} | cut -f -2)  -b {params.window} -i - > {output.variants}
@@ -120,7 +120,9 @@ rule covered_by_variants:
 rule gather_covered:
     input:
         #expand(rules.covered_by_variants.output['covered'],tissue=config['bams'],coverage=config['coverages'],imputed=('imputed','panel'))
-        expand(rules.covered_by_variants.output['covered'],tissue=config['bams'],coverage=('full',),imputed=('imputed','panel'))
+        expand(rules.covered_by_variants.output['covered'],tissue=config['bams'],coverage=('full','hundred','thirty'),imputed=('imputed','panel')),
+        #expand(rules.covered_by_variants.output['covered'],tissue=config['bams'],coverage=('hundred','thirty'),imputed=('imputed',)),
+        expand(rules.covered_by_variants.output['covered'],tissue=config['tissues'],coverage=('five',),imputed=('imputed',))
     output:
         'coverage/variants.csv'
     localrule: True
