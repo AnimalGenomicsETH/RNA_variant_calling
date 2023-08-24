@@ -74,18 +74,19 @@ rule beagle4_imputation:
 rule beagle5_panel_imputation:
     input:
         vcf = rules.beagle4_imputation.output,
-        panel = 'panel.vcf.gz'
+        panel = 'panel.phased.vcf.gz'
     output:
         multiext('{tissue}_{coverage}/autosomes.panel.vcf.gz','','.tbi')
     params:
         prefix = lambda wildcards, output: PurePath(output[0]).with_suffix('').with_suffix(''),
         name = lambda wildcards, output: PurePath(output[0]).name
-    threads: 4
+    threads: 24
     resources:
-        mem_mb = 5000
+        mem_mb = 4000,
+        waltime = '4h'
     shell:
         '''
-        java -jar -Xss25m -Xmx40G /cluster/work/pausch/alex/software/beagle.22Jul22.46e.jar ref={input.panel} gt={input.vcf[0]} nthreads={threads} out={params.prefix}
+        java -jar -Xss25m -Xmx80G /cluster/work/pausch/alex/software/beagle.22Jul22.46e.jar ref={input.panel} gt={input.vcf[0]} nthreads={threads} out={params.prefix}
         mv {output[0]} $TMPDIR/{params.name}
         bcftools reheader -f {config[reference]}.fai -o {output[0]} $TMPDIR/{params.name}
         tabix -fp vcf {output[0]}
