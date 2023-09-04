@@ -1,5 +1,17 @@
 from pathlib import PurePath
 
+rule bcftools_filter:
+    input:
+        '{tissue}_{coverage}/autosomes.imputed.vcf.gz'
+    output:
+        '{tissue}_{coverage}/autosomes.filtered.vcf.gz'
+    threads: 2
+    shell:
+        '''
+        bcftools filter --threads {threads} -i 'AF>0&&INFO/DR2>=0.1' -o {output} {input}
+        tabix -p vcf {output}
+        '''
+
 rule bcftools_isec:
     input:
         tissues = lambda wildcards: expand('{tissue}_{coverage}/autosomes.{imputed}.vcf.gz',tissue=config['tissues'],allow_missing=True),
@@ -14,9 +26,6 @@ rule bcftools_isec:
         bcftools isec -n +1 --threads {threads} -c {wildcards.mode} -o {output} {input}
         '''
 
-#awk '$5=="1110" {print $3,$4}' overlaps/imputed.none.full.txt | grep -v "," | awk 'length($0)==3' | sort | uniq -c
-#awk '$5=="1110" {print $3,$4}' overlaps/imputed.none.full.txt | grep -v "," | awk 'length($0)>3 {print length($1)-length($2)}' | sort | uniq -c | sort -k2,2nr | less
-
 rule count_isec:
     input:
         isec = rules.bcftools_isec.output,
@@ -27,7 +36,8 @@ rule count_isec:
         '''
         awk -v OFS="\\t" '{{ print $1,$2,$2+1,$3,$4,$5 }}' {input.isec} |\
         bedtools intersect -wo -a - -b {input.annotation} |\
-        awk ' {{ if($4~/,/||$5~/,/) {{ ++MA[$10=="intergenic"][$6] }} else {{ if (length($4)==1&&length($5)==1) {{++SNP[$10=="intergenic"][$6]}} else {{++INDEL[$10=="intergenic"][$6]}} }} }} END {{for (key in SNP[0]) {{ print "genic","SNP",key,SNP[0][key] }} for (key in SNP[1]) {{ print "intergenic","SNP",key,SNP[1][key] }} for (key in INDEL[0]) {{ print "genic","INDEL",key,INDEL[0][key] }} for (key in INDEL[1]) {{ print "intergenic","INDEL",key,INDEL[1][key] }} for (key in MA[0]) {{ print "genic","MA",key,MA[0][key]}} for (key in MA[1]) {{ print "intergenic","MA",key,MA[1][key]}} }}' > {output}
+        awk ' {{ if($4~/,/||$5~/,/) {{ ++MA[$10=="intergenic"][$6] }} else {{ if (length($4)==1&&length($5)==1) {{++SNP[$10=="intergenic"][$6]}} else {{++INDEL[$10=="intergenic"][$6]}} }} }} END {{for (key in SNP[0]) {{ print "genic","SNP",key,SNP[0][key] }} for (key in SNP[1]) {{ print "intergenic","SNP",key,SNP[1][key] }} for (key in INDEL[0]) {{ print "genic","INDEL",key,INDEL[0][key] }} for (key in INDEL[1]) {{ print "intergenic","INDEL",key,INDEL[1][key] }} for (key in MA[0]) {{ print "genic","MA",key,MA[0][key]}} for (key in MA[1]) {{ print "intergenic","MA",key,MA[1][key]}} }}' |
+        sed 's/ /_/' > {output}
         '''
 
 rule make_bed:
@@ -72,7 +82,7 @@ rule happy:
     resources:
         mem_mb = 5000,
         scratch = '10G',
-        walltime = '24h'
+        #walltime = ''
     shell:
         '''
         /opt/hap.py/bin/hap.py -r {input.reference} --bcf --usefiltered-truth --no-roc --no-json -L --pass-only --scratch-prefix $TMPDIR -X --threads 2 -o {params._dir} --stratification {input.regions} {input.vcf_WGS} {input.vcf_tissue}
