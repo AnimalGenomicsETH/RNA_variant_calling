@@ -48,9 +48,9 @@ rule gather_ase:
 
 rule normalise_vcf:
     input:
-        '{tissue}_{coverage}/autosomes.imputed.vcf.gz'
+        '{tissue}_{coverage}/autosomes.{imputed}.vcf.gz'
     output:
-        'eQTL/{tissue}_{coverage}/variants.normed.vcf.gz'
+        'eQTL/{tissue}_{coverage}_{imputed}/variants.normed.vcf.gz'
     threads: 4
     resources:
         mem_mb = 2500,
@@ -67,7 +67,7 @@ rule exclude_MAF:
     input:
         rules.normalise_vcf.output
     output:
-        'eQTL/{tissue}_{coverage}/exclude_sites.{MAF}.txt'
+        'eQTL/{tissue}_{coverage}_{imputed}/exclude_sites.{MAF}.txt'
     shell:
         '''
         bcftools query -f '%ID\n' -i 'MAF<0.{wildcards.MAF}' {input} > {output}
@@ -89,7 +89,7 @@ rule qtltools_parallel:
         cov = rules.make_covariates.output,
         mapping = lambda wildcards: rules.qtltools_FDR.output if wildcards._pass == 'conditionals' else []
     output:
-        merged = temp('eQTL/{tissue}_{coverage}_{expression}_{exp_coverage}/{_pass}.{chunk}.{MAF}.txt.gz')
+        merged = temp('eQTL/{tissue}_{coverage}_{expression}_{exp_coverage}_{imputed}/{_pass}.{chunk}.{MAF}.txt.gz')
     params:
         _pass = lambda wildcards,input: get_pass(wildcards._pass,input)
     localrule: lambda wildcards: wildcards._pass == 'conditionals'
@@ -106,7 +106,7 @@ rule qtltools_gather:
     input:
         expand(rules.qtltools_parallel.output,chunk=range(0,config['chunks']+1),allow_missing=True)
     output:
-        'eQTL/{tissue}_{coverage}_{expression}_{exp_coverage}/{_pass}.{MAF}.txt.gz'
+        'eQTL/{tissue}_{coverage}_{expression}_{exp_coverage}_{imputed}/{_pass}.{MAF}.txt.gz'
     localrule: True
     shell:
         '''
@@ -117,7 +117,7 @@ rule qtltools_FDR:
     input:
         expand(rules.qtltools_gather.output,_pass='permutations',allow_missing=True)
     output:
-        'eQTL/{tissue}_{coverage}_{expression}_{exp_coverage}/permutations_all.{MAF}.thresholds.txt'
+        'eQTL/{tissue}_{coverage}_{expression}_{exp_coverage}_{imputed}/permutations_all.{MAF}.thresholds.txt'
     params:
         out = lambda wildcards, output: PurePath(output[0]).with_suffix('').with_suffix('')
     envmodules:
