@@ -8,7 +8,7 @@ rule bcftools_filter:
     threads: 2
     shell:
         '''
-        bcftools filter --threads {threads} -i 'AF>0&&INFO/DR2>=0.1' -o {output} {input}
+        bcftools filter --threads {threads} -i 'AF>0&&INFO/DR2>0' -o {output} {input}
         tabix -p vcf {output}
         '''
 
@@ -66,12 +66,30 @@ rule bcftools_split:
         bcftools +split -i 'GT[*]="alt"' -Oz -o {params._dir} {input}
         '''
 
+rule make_CDS_regions:
+    input:
+        'Bos_taurus.ARS-UCD1.2.108.gtf.gz'
+    output:
+        CDS = 'happy/CDS.bed',
+        noncoding_exons = 'happy/noncoding_exons.bed',
+        non_exons = 'happy/others.bed',
+        regions = 'happy/regions.tsv'
+    localrule: True
+    shell:
+        '''
+        zgrep -P "^\d" {input} | awk -v OFS='\t' '$3=="CDS" {{print $1,$4,$5}}' | sort -k1,1n -k2,2n | uniq > {output.CDS}
+        zgrep -P "^\d" {input} | awk -v OFS='\t' '$3=="exon" {{print $1,$4,$5}}' | sort -k1,1n -k2,2n | uniq | bedtools subtract -A -a /dev/stdin -b {output.CDS} > {output.noncoding_exons}
+        cat {output.CDS} {output.noncoding_exons} | sort -k1,1n -k2,2n |\
+        bedtools complement -g {config[reference]}.fai -i /dev/stdin > {output.non_exons}
+        echo -e "CDS\\t{output.CDS}\\nNCE\\t{output.noncoding_exons}\\nintergenic\\t{output.non_exons}" > {output.regions}
+        '''
+
 rule happy:
     input:
         vcf_tissue = lambda wildcards: expand('split_vcfs/{tissue}_{coverage}_{imputed}/{sample}.vcf.gz',tissues=wildcards.tissue,allow_missing=True),
         vcf_WGS = lambda wildcards: expand('split_vcfs/WGS_full_{imputed}/{sample}.vcf.gz',allow_missing=True),
         reference = config['reference'],
-        regions = 'happy/regions.tsv'
+        regions = rules.make_CDS_regions.output['regions']
     output:
         csv = 'F1/{sample}.{tissue}.{coverage}.{imputed}.summary.csv',
         others = temp(multiext('F1/{sample}.{tissue}.{coverage}.{imputed}','.bcf','.bcf.csi','.extended.csv','.roc.all.csv.gz','.runinfo.json'))
