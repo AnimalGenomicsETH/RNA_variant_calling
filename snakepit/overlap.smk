@@ -29,15 +29,17 @@ rule bcftools_isec:
 rule count_isec:
     input:
         isec = rules.bcftools_isec.output,
-        annotation = 'annotation.bed'
+        annotation = 'annotation_detailed.regions.bed'
+        #annotation = 'annotation.bed'
     output:
         'overlaps/{imputed}.{mode}.{coverage}.isec'
     shell:
         '''
         awk -v OFS="\\t" '{{ print $1,$2,$2+1,$3,$4,$5 }}' {input.isec} |\
         bedtools intersect -wo -a - -b {input.annotation} |\
-        awk ' {{ if($4~/,/||$5~/,/) {{ ++MA[$10=="intergenic"][$6] }} else {{ if (length($4)==1&&length($5)==1) {{++SNP[$10=="intergenic"][$6]}} else {{++INDEL[$10=="intergenic"][$6]}} }} }} END {{for (key in SNP[0]) {{ print "genic","SNP",key,SNP[0][key] }} for (key in SNP[1]) {{ print "intergenic","SNP",key,SNP[1][key] }} for (key in INDEL[0]) {{ print "genic","INDEL",key,INDEL[0][key] }} for (key in INDEL[1]) {{ print "intergenic","INDEL",key,INDEL[1][key] }} for (key in MA[0]) {{ print "genic","MA",key,MA[0][key]}} for (key in MA[1]) {{ print "intergenic","MA",key,MA[1][key]}} }}' |
+        awk ' {{ if($4~/,/||$5~/,/) {{ ++MA[$10][$6] }} else {{ if (length($4)==1&&length($5)==1) {{++SNP[$10][$6]}} else {{++INDEL[$10][$6]}} }} }} END {{ for (R in SNP) {{ for (V in SNP[R]) {{ print R,"SNP",V,SNP[R][V] }}; for (V in INDEL[R]) {{ print R,"INDEL",V,INDEL[R][V] }}; for (V in MA[R]) {{ print R,"MA",V,MA[R][V] }} }} }} ' |\
         sed 's/ /_/' > {output}
+        
         '''
 
 rule make_bed:
@@ -119,7 +121,7 @@ rule gather_happy:
         echo -e "variant region truth query recall precision truth_TiTv query_TiTv F1_score sample tissue" > {output}
         for i in {input}
         do
-          awk -v I=$(basename $i) -F',' '$2=="*"&&($3=="others"||$3=="exons")&&$4=="PASS" {{ split(I,a,"."); print $1,$3,$17,$38,$8,$9,$22,$43,$11,a[1],a[2] }}' $i >> {output}
+          awk -v I=$(basename $i) -F',' '$2=="*"&&($3=="CDS"||$3=="NCE"||$3=="intergenic")&&$4=="PASS" {{ split(I,a,"."); print $1,$3,$17,$38,$8,$9,$22,$43,$11,a[1],a[2] }}' $i >> {output}
         done
         '''
 
