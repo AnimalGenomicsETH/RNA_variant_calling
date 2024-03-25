@@ -68,23 +68,54 @@ rule bcftools_split:
         bcftools +split -i 'GT[*]="alt"' -Oz -o {params._dir} {input}
         '''
 
+rule bin_TPM_genes:
+    input:
+        #rules.combine_quan.output
+        'aligned_genes/{tissue}/gene_TPM.full.tsv.gz'
+    output:
+        'happy/{tissue}.TPM_bins'
+    localrule: True
+    run:
+        import polars as pl
+        import numpy as np
+        df = (pl.read_csv(input[0],separator='\t',ignore_errors=True)
+                .drop_nulls()
+             )
+        df2 = (df.with_columns(df.select(pl.selectors.starts_with('BSWCHEM')).map_rows(np.median)).select(['gene','map'])
+                .with_columns(pl.when(pl.col("map")<2).then(0)
+                                .when(pl.col('map').is_between(2, 10, closed='left')).then(2)
+                                .when(pl.col('map').is_between(10, 50, closed='left')).then(10)
+                                .when(pl.col('map').is_between(50, 200, closed='left')).then(50)
+                                .otherwise(200).alias('TPM_level'))
+                .with_columns(TPM_bin=pl.col('TPM_level').replace({0:'TPM_zero',2:'TPM_low',10:'TPM_moderate',50:'TPM_moderate_high',200:'TPM_high'},default=None))
+              )
+        df2.select(['gene','TPM_bin']).write_csv(output[0],separator=' ',include_header=False)
+
 rule make_CDS_regions:
     input:
-        'Bos_taurus.ARS-UCD1.2.108.gtf.gz'
+        gtf = 'Bos_taurus.ARS-UCD1.2.108.gtf.gz',
+        bins = rules.bin_TPM_genes.output
     output:
-        CDS = 'happy/CDS.bed',
-        noncoding_exons = 'happy/noncoding_exons.bed',
-        non_exons = 'happy/others.bed',
-        regions = 'happy/regions.tsv'
+        CDS = 'happy/{tissue}.CDS.bed',
+        TPMs = multiext('happy/{tissue}','TPM_zero.bed','TPM_low.bed','TPM_moderate.bed','TPM_moderate_high.bed','TPM_high.bed'),
+        noncoding_exons = 'happy/{tissue}.noncoding_exons.bed',
+        non_exons = 'happy/{tissue}.others.bed',
+        regions = 'happy/{tissue}.regions.tsv'
     localrule: True
     shell:
         '''
-        zgrep -P "^\d" {input} | awk -v OFS='\t' '$3=="CDS" {{print $1,$4,$5}}' | sort -k1,1n -k2,2n | uniq > {output.CDS}
-        zgrep -P "^\d" {input} | awk -v OFS='\t' '$3=="exon" {{print $1,$4,$5}}' | sort -k1,1n -k2,2n | uniq | bedtools subtract -A -a /dev/stdin -b {output.CDS} > {output.noncoding_exons}
+        zgrep -P "^\d" {input.gtf} | awk -v OFS='\t' '$3=="CDS" {{(match($10,/[A-Z0-9]+/,m)); print $1,$4,$5,m[0]}}' | sort -k1,1n -k2,2n | uniq > {output.CDS}
+        zgrep -P "^\d" {input.gtf} | awk -v OFS='\t' '$3=="exon" {{print $1,$4,$5}}' | sort -k1,1n -k2,2n | uniq | bedtools subtract -A -a /dev/stdin -b {output.CDS} > {output.noncoding_exons}
         cat {output.CDS} {output.noncoding_exons} | sort -k1,1n -k2,2n |\
         bedtools complement -g {config[reference]}.fai -i /dev/stdin > {output.non_exons}
-        echo -e "CDS\\t{output.CDS}\\nNCE\\t{output.noncoding_exons}\\nintergenic\\t{output.non_exons}" > {output.regions}
+
+        awk -v OFS='\\t' -v T={wildcards.tissue} 'NR==FNR{{a[$1]=$2;next}}$4 in a{{print $1,$2,$3 > "happy/"T"."a[$4]".bed"}}' {input.bins} {output.CDS} 
+
+        echo -e "CDS_zero\\thappy/{wildcards.tissue}.TPM_zero.bed\\nCDS_low\\thappy/{wildcards.tissue}.TPM_low.bed\\nCDS_moderate\\thappy/{wildcards.tissue}.TPM_moderate.bed\\nCDS_moderate_high\\thappy/{wildcards.tissue}.TPM_moderate_high.bed\\nCDS_high\\thappy/{wildcards.tissue}.TPM_high.bed\\nNCE\\t{output.noncoding_exons}\\nintergenic\\t{output.non_exons}" > {output.regions}
         '''
+
+#x={0:'TPM<2',2:'2<TPM<=10',10:'10<TPM<=100',100:'100<TPM<=1000',1000:'1000<TPM'}
+#zcat aligned_genes/Testis/gene_TPM.full.tsv.gz | awk 'NR>1 {T=0;n=0;for (i=7; i<=NF;++i) {T+=$i;++n}; print $4,T/n}'
 
 rule happy:
     input:
