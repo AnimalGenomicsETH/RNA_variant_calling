@@ -97,15 +97,15 @@ rule make_CDS_regions:
         bins = rules.bin_TPM_genes.output
     output:
         CDS = 'happy/{tissue}.CDS.bed',
-        TPMs = multiext('happy/{tissue}','TPM_zero.bed','TPM_low.bed','TPM_moderate.bed','TPM_moderate_high.bed','TPM_high.bed'),
+        TPMs = multiext('happy/{tissue}','.TPM_zero.bed','.TPM_low.bed','.TPM_moderate.bed','.TPM_moderate_high.bed','.TPM_high.bed'),
         noncoding_exons = 'happy/{tissue}.noncoding_exons.bed',
         non_exons = 'happy/{tissue}.others.bed',
         regions = 'happy/{tissue}.regions.tsv'
     localrule: True
     shell:
         '''
-        zgrep -P "^\d" {input.gtf} | awk -v OFS='\t' '$3=="CDS" {{(match($10,/[A-Z0-9]+/,m)); print $1,$4,$5,m[0]}}' | sort -k1,1n -k2,2n | uniq > {output.CDS}
-        zgrep -P "^\d" {input.gtf} | awk -v OFS='\t' '$3=="exon" {{print $1,$4,$5}}' | sort -k1,1n -k2,2n | uniq | bedtools subtract -A -a /dev/stdin -b {output.CDS} > {output.noncoding_exons}
+        zgrep -P "^\d" {input.gtf} | awk -v OFS='\\t' '$3=="CDS" {{(match($10,/[A-Z0-9]+/,m)); print $1,$4,$5,m[0]}}' | sort -k1,1n -k2,2n | uniq > {output.CDS}
+        zgrep -P "^\d" {input.gtf} | awk -v OFS='\\t' '$3=="exon" {{(match($10,/[A-Z0-9]+/,m)); print $1,$4,$5,m[0]}}' | sort -k1,1n -k2,2n | uniq | bedtools subtract -A -a /dev/stdin -b {output.CDS} > {output.noncoding_exons}
         cat {output.CDS} {output.noncoding_exons} | sort -k1,1n -k2,2n |\
         bedtools complement -g {config[reference]}.fai -i /dev/stdin > {output.non_exons}
 
@@ -152,7 +152,7 @@ rule gather_happy:
         echo -e "variant region truth query recall precision truth_TiTv query_TiTv F1_score sample tissue" > {output}
         for i in {input}
         do
-          awk -v I=$(basename $i) -F',' '$2=="*"&&($3=="CDS"||$3=="NCE"||$3=="intergenic")&&$4=="PASS" {{ split(I,a,"."); print $1,$3,$17,$38,$8,$9,$22,$43,$11,a[1],a[2] }}' $i >> {output}
+          awk -v I=$(basename $i) -F',' '$2=="*"&&($3~/CDS/||$3=="NCE"||$3=="intergenic")&&$4=="PASS" {{ split(I,a,"."); print $1,$3,$17,$38,$8,$9,$22,$43,$11,a[1],a[2] }}' $i >> {output}
         done
         '''
 
