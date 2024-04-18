@@ -78,15 +78,18 @@ rule bin_TPM_genes:
     run:
         import polars as pl
         import numpy as np
+
+        TPM_ZERO     = 0.1
+        TPM_LOW      = 2
+        TPM_MODERATE = 10
         df = (pl.read_csv(input[0],separator='\t',ignore_errors=True)
                 .drop_nulls()
              )
         df2 = (df.with_columns(df.select(pl.selectors.starts_with('BSWCHEM')).map_rows(np.median)).select(['gene','map'])
-                .with_columns(pl.when(pl.col("map")<2).then(0)
-                                .when(pl.col('map').is_between(2, 10, closed='left')).then(2)
-                                .when(pl.col('map').is_between(10, 50, closed='left')).then(10)
-                                .when(pl.col('map').is_between(50, 200, closed='left')).then(50)
-                                .otherwise(200).alias('TPM_level'))
+                .with_columns(pl.when(pl.col("map")<TPM_ZERO).then(pl.lit('Not expressed'))
+                                .when(pl.col('map').is_between(TPM_ZERO, TPM_LOW, closed='left')).then(pl.lit('Lowly expressed'))
+                                .when(pl.col('map').is_between(TPM_LOW, TPM_MODERATE, closed='left')).then(pl.lit('Moderately expressed'))
+                                .otherwise(pl.lit('Highly expressed')).alias('TPM_level'))
                 .with_columns(TPM_bin=pl.col('TPM_level').replace({0:'TPM_zero',2:'TPM_low',10:'TPM_moderate',50:'TPM_moderate_high',200:'TPM_high'},default=None))
               )
         df2.select(['gene','TPM_bin']).write_csv(output[0],separator=' ',include_header=False)
