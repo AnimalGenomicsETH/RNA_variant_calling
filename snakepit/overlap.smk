@@ -86,13 +86,12 @@ rule bin_TPM_genes:
                 .drop_nulls()
              )
         df2 = (df.with_columns(df.select(pl.selectors.starts_with('BSWCHEM')).map_rows(np.median)).select(['gene','map'])
-                .with_columns(pl.when(pl.col("map")<TPM_ZERO).then(pl.lit('Not expressed'))
-                                .when(pl.col('map').is_between(TPM_ZERO, TPM_LOW, closed='left')).then(pl.lit('Lowly expressed'))
-                                .when(pl.col('map').is_between(TPM_LOW, TPM_MODERATE, closed='left')).then(pl.lit('Moderately expressed'))
-                                .otherwise(pl.lit('Highly expressed')).alias('TPM_level'))
-                .with_columns(TPM_bin=pl.col('TPM_level').replace({0:'TPM_zero',2:'TPM_low',10:'TPM_moderate',50:'TPM_moderate_high',200:'TPM_high'},default=None))
+                .with_columns(pl.when(pl.col("map")<TPM_ZERO).then(pl.lit('TPM_ZERO'))
+                                .when(pl.col('map').is_between(TPM_ZERO, TPM_LOW, closed='left')).then(pl.lit('TPM_LOW'))
+                                .when(pl.col('map').is_between(TPM_LOW, TPM_MODERATE, closed='left')).then(pl.lit('TPM_MODERATE'))
+                                .otherwise(pl.lit('TPM_HIGH')).alias('TPM_level'))
               )
-        df2.select(['gene','TPM_bin']).write_csv(output[0],separator=' ',include_header=False)
+        df2.select(['gene','TPM_level']).write_csv(output[0],separator=' ',include_header=False)
 
 rule make_CDS_regions:
     input:
@@ -100,7 +99,7 @@ rule make_CDS_regions:
         bins = rules.bin_TPM_genes.output
     output:
         CDS = 'happy/{tissue}.CDS.bed',
-        TPMs = multiext('happy/{tissue}','.TPM_zero.bed','.TPM_low.bed','.TPM_moderate.bed','.TPM_moderate_high.bed','.TPM_high.bed'),
+        TPMs = multiext('happy/{tissue}','.TPM_ZERO.bed','.TPM_LOW.bed','.TPM_MODERATE.bed','.TPM_HIGH.bed'),
         noncoding_exons = 'happy/{tissue}.noncoding_exons.bed',
         non_exons = 'happy/{tissue}.others.bed',
         regions = 'happy/{tissue}.regions.tsv'
@@ -114,11 +113,8 @@ rule make_CDS_regions:
 
         awk -v OFS='\\t' -v T={wildcards.tissue} 'NR==FNR{{a[$1]=$2;next}}$4 in a{{print $1,$2,$3 > "happy/"T"."a[$4]".bed"}}' {input.bins} {output.CDS} 
 
-        echo -e "CDS_zero\\thappy/{wildcards.tissue}.TPM_zero.bed\\nCDS_low\\thappy/{wildcards.tissue}.TPM_low.bed\\nCDS_moderate\\thappy/{wildcards.tissue}.TPM_moderate.bed\\nCDS_moderate_high\\thappy/{wildcards.tissue}.TPM_moderate_high.bed\\nCDS_high\\thappy/{wildcards.tissue}.TPM_high.bed\\nNCE\\t{output.noncoding_exons}\\nintergenic\\t{output.non_exons}" > {output.regions}
+        echo -e "CDS_zero\\t{output.TPMs[0]}\\nCDS_low\\t{output.TPMs[1]}\\nCDS_moderate\\t{output.TPMs[2]}\\nCDS_high\\t{output.TPMs[3]}\\nNCE\\t{output.noncoding_exons}\\nintergenic\\t{output.non_exons}" > {output.regions}
         '''
-
-#x={0:'TPM<2',2:'2<TPM<=10',10:'10<TPM<=100',100:'100<TPM<=1000',1000:'1000<TPM'}
-#zcat aligned_genes/Testis/gene_TPM.full.tsv.gz | awk 'NR>1 {T=0;n=0;for (i=7; i<=NF;++i) {T+=$i;++n}; print $4,T/n}'
 
 rule happy:
     input:
@@ -135,8 +131,7 @@ rule happy:
     threads: 1
     resources:
         mem_mb = 5000,
-        scratch = '10G',
-        #walltime = ''
+        scratch = '10G'
     shell:
         '''
         /opt/hap.py/bin/hap.py -r {input.reference} --bcf --usefiltered-truth --no-roc --no-json -L --pass-only --scratch-prefix $TMPDIR -X --threads 2 -o {params._dir} --stratification {input.regions} {input.vcf_WGS} {input.vcf_tissue}
