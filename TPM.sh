@@ -1,8 +1,13 @@
 
 
-# 
-paste <(grep -P "(chr|ENSBTAG00000053969)" /cluster/work/pausch/xena/eQTL/gene_counts/testis/UNNORMALIZED_testis_TPM.tsv | awk '{for(i=1;i<=NF;i++)a[i][NR]=$i}END{for(i in a)for(j in a[i])printf"%s"(j==NR?RS:FS),a[i][j]}' "${1+FS=$1}" | grep -f /cluster/work/pausch/alex/RNA_call_test/sample_order.txt | awk -v OFS='\t' '{print $1,$2}')  <(bcftools query -r 19:42546571 -f '[%GT\n]' /cluster/work/pausch/alex/RNA_call_test/eQTL/Testis_full/variants.normed.vcf.gz) > Editing_QTL/ENSBTAG00000053969/Testis.TPM
+#a
+while read G P  
+do
+  echo $G $P
+  for T in Testis Epididymis_head Vas_deferens
+  do
+    paste <(grep -P "(chr|${G})" /cluster/work/pausch/alex/RNA_call_test/Unnormalized_TPM/UNNORMALIZED_${T}_TPM.tsv | awk '{for(i=1;i<=NF;i++)a[i][NR]=$i}END{for(i in a)for(j in a[i])printf"%s"(j==NR?RS:FS),a[i][j]}' "${1+FS=$1}" | grep -f /cluster/work/pausch/alex/RNA_call_test/sample_order.txt | awk -v OFS='\t' '{print $1,$2}' | sort -k1,1)  <(bcftools query -r $P -f '[%GT\n]' /cluster/work/pausch/alex/RNA_call_test/eQTL/${T}_full/variants.normed.vcf.gz) <(bcftools query -r $P -f '[%GT\n]' /cluster/work/pausch/alex/RNA_call_test/eQTL/WGS_full/variants.normed.vcf.gz) > Editing_QTL/${G}/${T}.TPM
+  done
+done < <(echo -e "ENSBTAG00000053969 19:42546571\nENSBTAG00000027962 2:111893837\nENSBTAG00000000597 1:18578966")
 
-paste <(grep -P "(chr|ENSBTAG00000053969)" /cluster/work/pausch/xena/eQTL/gene_counts/epi_h/UNNORMALIZED_epi_h_TPM.tsv | awk '{for(i=1;i<=NF;i++)a[i][NR]=$i}END{for(i in a)for(j in a[i])printf"%s"(j==NR?RS:FS),a[i][j]}' "${1+FS=$1}" | grep -f /cluster/work/pausch/alex/RNA_call_test/sample_order.txt | sed 's/EH//' | awk -v OFS='\t' '{print $1,$2}')  <(bcftools query -r 19:42546571 -f '[%GT\n]' /cluster/work/pausch/alex/RNA_call_test/eQTL/Epididymis_head_full/variants.normed.vcf.gz) > Editing_QTL/ENSBTAG00000053969/Epididymis_head.TPM
 
-paste <(grep -P "(chr|ENSBTAG00000053969)" /cluster/work/pausch/xena/eQTL/gene_counts/vas_d/UNNORMALIZED_vas_d_TPM.tsv | awk '{for(i=1;i<=NF;i++)a[i][NR]=$i}END{for(i in a)for(j in a[i])printf"%s"(j==NR?RS:FS),a[i][j]}' "${1+FS=$1}" | grep -f /cluster/work/pausch/alex/RNA_call_test/sample_order.txt | sed 's/V//' | awk -v OFS='\t' '{print $1,$2}')  <(bcftools query -r 19:42546571 -f '[%GT\n]' /cluster/work/pausch/alex/RNA_call_test/eQTL/Vas_deferens_full/variants.normed.vcf.gz) > Editing_QTL/ENSBTAG00000053969/Vas_deferens.TPM
