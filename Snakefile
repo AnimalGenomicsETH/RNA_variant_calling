@@ -27,7 +27,7 @@ rule all:
         ## Bam coverage/ASE
         expand('coverage/annotated.{coverage}.bed.gz',coverage=config['coverages']),
         expand('coverage/genome.{coverage}.csv',coverage=config['coverages']),
-        'ase/ASE.csv.gz',
+        expand('ase/metrics.{coverage}.csv',coverage=config['coverages']),
         
         ## Variant comparison
         'coverage/variants.csv',

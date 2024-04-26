@@ -2,7 +2,7 @@ from pathlib import PurePath
 
 rule samtools_subsample:
     input:
-        bam = 'subsampled_bams/{tissue}/{sample}.full.bam'
+        bam = lambda wildcards: config['bams'][wildcards.tissue]+'{sample}.bam'
     output:
         multiext('subsampled_bams/{tissue}/{sample}.{coverage}.bam','','.csi')
     params:
@@ -23,7 +23,7 @@ rule DeepVariant_call:
     params:
         model = lambda wildcards: 'WGS' if wildcards.tissue == 'WGS' else config['RNA_model'],
         _index = lambda wildcards: '.bai' if wildcards.coverage == 'full' else '.csi',
-        config = 'config/analysis.yaml' #same config as the master config used to run this
+        config = workflow.configfiles[0] #get the same configfile as the master config used to run this
     threads: 1
     resources:
         mem_mb = 2500,

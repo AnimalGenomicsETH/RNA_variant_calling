@@ -1,0 +1,46 @@
+## Add paths for singularity to find symlinks in
+binding_paths:
+  - '$TMPDIR'
+
+## Existing data alignments and reference
+bams:
+  WGS: 'bams/WGS/'
+  Testis: 'bams/Testis/'
+  Epididymis_head: 'bams/Epididymis_head/'
+  Vas_deferens: 'bams/Vas_deferens/'
+
+reference: 'ARS-UCD1.2_Btau5.0.1Y.fa'
+
+samples:
+  - BV_1
+  - BV_2
+
+## Subsampling parameters
+coverages:
+  full: ~
+  five: 0.021
+  thirty: 0.125
+  hundred: 0.42
+
+## Variant calling parameters
+deepvariant_pipeline: 'deepvariant.smk'
+shards: 2
+regions:
+  all: ~
+
+RNA_model: 'model.ckpt'
+GL_config:
+  default: 'WGS'
+filters:
+  - Unrevised
+ 
+## Association mapping 
+MAF: 0.01
+permutations: 2500
+nominal: 0.1
+window: 1000000 #1 Mb
+chunks: 30
+fixed_covariates:
+  Testis: 'covariates/Testis.fixed.txt'
+  Epididymis_head: 'covariates/Epididymis_head.fixed.txt'
+  Vas_deferens: 'covariates/Vas_deferens.fixed.txt'

@@ -29,8 +29,7 @@ rule bcftools_isec:
 rule count_isec:
     input:
         isec = rules.bcftools_isec.output,
-        annotation = 'annotation_detailed.regions.bed'
-        #annotation = 'annotation.bed'
+        annotation = rules.format_annotation.output['bed']
     output:
         'overlaps/{imputed}.{mode}.{coverage}.isec'
     shell:
@@ -39,7 +38,6 @@ rule count_isec:
         bedtools intersect -wo -a - -b {input.annotation} |\
         awk ' {{ if($4~/,/||$5~/,/) {{ ++MA[$10][$6] }} else {{ if (length($4)==1&&length($5)==1) {{++SNP[$10][$6]}} else {{++INDEL[$10][$6]}} }} }} END {{ for (R in SNP) {{ for (V in SNP[R]) {{ print R,"SNP",V,SNP[R][V] }}; for (V in INDEL[R]) {{ print R,"INDEL",V,INDEL[R][V] }}; for (V in MA[R]) {{ print R,"MA",V,MA[R][V] }} }} }} ' |\
         sed 's/ /_/' > {output}
-        
         '''
 
 rule make_bed:
@@ -70,8 +68,7 @@ rule bcftools_split:
 
 rule bin_TPM_genes:
     input:
-        #rules.combine_quan.output
-        'aligned_genes/{tissue}/gene_TPM.full.tsv.gz'
+        expand(rules.combine_quan.output,coverage=('full',),allow_missing=True)
     output:
         'happy/{tissue}.TPM_bins'
     localrule: True
@@ -95,7 +92,7 @@ rule bin_TPM_genes:
 
 rule make_CDS_regions:
     input:
-        gtf = 'Bos_taurus.ARS-UCD1.2.108.gtf.gz',
+        rules.format_annotation.output['gtf'],
         bins = rules.bin_TPM_genes.output
     output:
         CDS = 'happy/{tissue}.CDS.bed',
@@ -140,7 +137,6 @@ rule happy:
 rule gather_happy:
     input:
         #need to consider extended
-        #expand(rules.happy.output['others'][2],sample=config['samples'],tissue=config['tissues'],allow_missing=True)
         lambda wildcards: expand(rules.happy.output['others'][2],sample=config['samples'],tissue=(config['tissues'] if wildcards.coverage not in ['hundred','thirty'] else config['bams']),allow_missing=True)
     output:
         'F1/happy.{coverage}.{imputed}.csv'
@@ -178,9 +174,7 @@ rule covered_by_variants:
 
 rule gather_covered:
     input:
-        #expand(rules.covered_by_variants.output['covered'],tissue=config['bams'],coverage=config['coverages'],imputed=('imputed','panel'))
         expand(rules.covered_by_variants.output['covered'],tissue=config['bams'],coverage=('full','hundred','thirty'),imputed=('imputed','panel')),
-        #expand(rules.covered_by_variants.output['covered'],tissue=config['bams'],coverage=('hundred','thirty'),imputed=('imputed',)),
         expand(rules.covered_by_variants.output['covered'],tissue=config['tissues'],coverage=('five',),imputed=('imputed',))
     output:
         'coverage/variants.csv'
@@ -191,10 +185,9 @@ rule gather_covered:
         cat {input} >> {output}
         '''
 
-## ASE analysis
 rule ASE_analysis:
     input:
-        ase = 'ase/{sample}.{tissue}.{coverage}.ase',
+        ase = rules.qtltools_ase.output[0],
         happy = 'F1/{sample}.{tissue}.{coverage}.imputed.bcf',
         exons = 'happy/exons.bed'
     output:

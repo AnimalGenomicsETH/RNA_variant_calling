@@ -1,3 +1,6 @@
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![snakemaker](https://github.com/AnimalGenomicsETH/RNA_variant_calling/actions/workflows/snakemaker.yaml/badge.svg?branch=main)](https://github.com/AnimalGenomicsETH/RNA_variant_calling/actions/workflows/snakemaker.yaml)
+
 ## RNA sequencing variants are enriched for eQTL in cattle tissues
 
 DNA sequencing is widely used for calling variants while RNA sequencing is relegated to only profiling gene expression.

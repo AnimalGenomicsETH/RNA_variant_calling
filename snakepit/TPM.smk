@@ -3,9 +3,30 @@ import pandas as pd
 import subprocess
 from tempfile import NamedTemporaryFile
 
+rule format_annotation:
+    input:
+        fai = config['reference']+'.fai'
+    output:
+        gtf = 'Bos_taurus.ARS-UCD1.2.108.chr.gtf.gz',
+        bed = 'annotation.bed'
+    params:
+        url = config.get('annotation_url','https://ftp.ensembl.org/pub/release-108/gtf/bos_taurus/Bos_taurus.ARS-UCD1.2.108.chr.gtf.gz')
+    localrule: True
+    shell:
+        '''
+        curl -s {params.url} |\
+        tee {output.gtf} |\
+        gunzip |\
+        awk -v OFS="\\t" '$1~/^[0-9]/&&$3=="gene" {{ printf "%s\\t%s\\t%s\\t",$1,$4,$5; for (i=9; i<=NF; ++i) {{ if ($i=="gene_id" || $i=="gene_biotype") printf "%s\\t",$(i+1) }} printf "+\\n" }}' |\
+        sed 's/"//g; s/;//g' | sort -k1,1n -k2,2n |\
+        tee {output.bed} |\
+        stdbuf -o1G bedtools complement -L -i - -g {input.fai} | awk ' {{ printf "%s\\tintergenic\\tintergenic\\t+\\n",$0 }} ' >> {output.bed}
+        sort -k1,1n -k2,2n -o {output.bed} {output.bed}
+        '''
+
 rule qtltools_quan:
     input:
-        gtf = config['GTF'],
+        gtf = rules.format_annotation.output['gtf'],
         bam = 'subsampled_bams/{tissue}/{sample}.{coverage}.bam'
     output:
         temp(multiext('aligned_genes/{tissue}/{sample}.{coverage}','.gene.tpm.bed','.gene.count.bed','.exon.tpm.bed','.exon.count.bed','.stats'))
@@ -35,7 +56,7 @@ rule combine_quan:
 
 rule featurecounts:
     input:
-        gtf = config['GTF'],
+        gtf = rules.format_annotation.output['gtf'],
         bams = expand('subsampled_bams/{tissue}/{sample}.{coverage}.bam',sample=config['samples'],allow_missing=True)
     output:
         temp(multiext('aligned_genes/{tissue}/genes.{coverage}.FC','','.summary'))

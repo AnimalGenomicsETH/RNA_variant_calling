@@ -8,7 +8,7 @@ rule qtltools_ase:
         vcf = 'WGS_{coverage}/autosomes.imputed.vcf.gz',
         bam = 'subsampled_bams/{tissue}/{sample}.{coverage}.bam',
         reference = config['reference'],
-        annotation = config['GTF']
+        annotation = rules.format_annotation.output['gtf']
     output:
         multiext('ase/{sample}.{tissue}.{coverage}','.ase','.metric','.ref_bias')
     params:
@@ -26,7 +26,7 @@ rule calc_ase:
     input:
         rules.qtltools_ase.output[0]
     output:
-        'ase/{sample}.{tissue}.{coverage}.metric'
+        'ase/{sample}.{tissue}.{coverage}.ase_metric'
     localrule: True
     shell:
         '''
