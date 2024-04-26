@@ -23,3 +23,6 @@ The main steps are as follows:
  - Assessing F1 score between DNA- and RNA-seq variants
  - Building gene expression matricies from RNA alignments
  - Association mapping between DNA- or RNA-seq variants and gene expression
+
+#### Overview of snakemake DAG
+![DAG](https://github.com/AnimalGenomicsETH/RNA_variant_calling/assets/29678761/ef428e2e-9ebd-4ebc-99ab-0570eab2fe36)
