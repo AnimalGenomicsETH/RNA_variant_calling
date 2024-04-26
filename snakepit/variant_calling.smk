@@ -17,22 +17,24 @@ rule samtools_subsample:
 
 rule DeepVariant_call:
     input:
-        config = 'config/analysis.yaml',
         bams = expand(rules.samtools_subsample.output[0],sample=config['samples'],allow_missing=True)
     output:
         multiext('{tissue}_{coverage}/all.Unrevised.vcf.gz','','.tbi')
     params:
-        model = lambda wildcards: 'WGS' if wildcards.tissue == 'WGS' else '/cluster/work/pausch/alex/REF_DATA/RNA_DV_models/model.ckpt',
-        _index = lambda wildcards: '.bai' if wildcards.coverage == 'full' else '.csi'
+        model = lambda wildcards: 'WGS' if wildcards.tissue == 'WGS' else config['RNA_model'],
+        _index = lambda wildcards: '.bai' if wildcards.coverage == 'full' else '.csi',
+        config = 'config/analysis.yaml' #same config as the master config used to run this
     threads: 1
     resources:
         mem_mb = 2500,
         walltime = '24h'
     shell:
         '''
-        snakemake -s /cluster/work/pausch/alex/BSW_analysis/snakepit/deepvariant.smk --configfile {input.config} \
-                --config Run_name="{wildcards.tissue}_{wildcards.coverage}" bam_path="subsampled_bams/{wildcards.tissue}/" bam_index="{params._index}" bam_name="{{sample}}.{wildcards.coverage}.bam" model="{params.model}" \
-                --profile "slurm/fullNT" --nolock
+        snakemake -s {config[deepvariant_pipeline]} \
+        --configfile {params.config} \
+        --config Run_name="{wildcards.tissue}_{wildcards.coverage}" bam_path="subsampled_bams/{wildcards.tissue}/" bam_index="{params._index}" bam_name="{{sample}}.{wildcards.coverage}.bam" model="{params.model}" \
+        --profile "slurm/full" \
+        --nolock
         '''
 
 rule bcftools_view:
@@ -65,7 +67,7 @@ rule beagle4_imputation:
         walltime = lambda wildcards: '24h' if wildcards.tissue != 'WGS' else '48h'
     shell:
         '''
-        java -jar -Xss25m -Xmx40G /cluster/work/pausch/alex/software/beagle.27Jan18.7e1.jar gl={input} nthreads={threads} out={params.prefix}
+        beagle4 gl={input} nthreads={threads} out={params.prefix}
         mv {output[0]} $TMPDIR/{params.name}
         bcftools reheader -f {config[reference]}.fai -o {output[0]} $TMPDIR/{params.name}
         tabix -fp vcf {output[0]}
@@ -86,7 +88,7 @@ rule beagle5_panel_imputation:
         waltime = '4h'
     shell:
         '''
-        java -jar -Xss25m -Xmx80G /cluster/work/pausch/alex/software/beagle.22Jul22.46e.jar ref={input.panel} gt={input.vcf[0]} nthreads={threads} out={params.prefix}
+        beagle5 ref={input.panel} gt={input.vcf[0]} nthreads={threads} out={params.prefix}
         mv {output[0]} $TMPDIR/{params.name}
         bcftools reheader -f {config[reference]}.fai -o {output[0]} $TMPDIR/{params.name}
         tabix -fp vcf {output[0]}
@@ -95,7 +97,6 @@ rule beagle5_panel_imputation:
 rule plink_PCA:
     input:
         rules.beagle4_imputation.output[0]
-        #'{tissue}_{coverage}/autosomes.pruned.vcf.gz'
     output:
         multiext('PCA/{tissue}.{coverage}','.eigenval','.eigenvec','.log')
     params:
@@ -118,9 +119,9 @@ rule vep_download:
     localrule: True
     shell:
         '''
-        export TMPDIR=/cluster/scratch/alleonard
-        curl -o $TMPDIR/bos_taurus.tar.gz https://ftp.ensembl.org/pub/release-110/variation/indexed_vep_cache/bos_taurus_vep_110_ARS-UCD1.2.tar.gz
-        tar xzf $TMPDIR/bos_taurus.tar.gz -C {parmas}
+        curl -o bos_taurus.tar.gz https://ftp.ensembl.org/pub/release-110/variation/indexed_vep_cache/bos_taurus_vep_110_ARS-UCD1.2.tar.gz
+        tar xzf bos_taurus.tar.gz -C {parmas}
+        rm bos_taurus.tar.gz
         '''
 
 rule vep_annotate:
@@ -134,7 +135,7 @@ rule vep_annotate:
     threads: 4
     resources:
         mem_mb = 1250
-    container: '/cluster/work/pausch/alex/software/images/ensembl-vep_latest.sif'
+    container: 'docker://ensemblorg/ensembl-vep'
     shell:
         '''
         export LC_ALL=C

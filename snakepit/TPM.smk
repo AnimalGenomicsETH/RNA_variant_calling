@@ -45,7 +45,7 @@ rule featurecounts:
         walltime = '1h'
     shell:
         '''
-        /cluster/work/pausch/alex/software/subread-2.0.4-source/src/featureCounts -O -M -p -T {threads} -t exon -g gene_id --fraction -Q 60 -s 2 --primary --tmpDir $TMPDIR -a {input.gtf} -o {output[0]} {input.bams}
+        featureCounts -O -M -p -T {threads} -t exon -g gene_id --fraction -Q 60 -s 2 --primary --tmpDir $TMPDIR -a {input.gtf} -o {output[0]} {input.bams}
         '''
 
 rule filter_TPM:
@@ -66,10 +66,9 @@ rule filter_TPM:
 
 rule bcftools_prune:
     input:
-        rules.beagle4_imputation.output
-        #'{tissue}_{coverage}/autosomes.imputed.vcf.gz'
+        '{tissue}_{coverage}/autosomes.{imputed}.vcf.gz'
     output:
-        temp(multiext('{tissue}_{coverage}/autosomes.pruned.vcf.gz','','.tbi'))
+        temp(multiext('{tissue}_{coverage}/autosomes.{imputed}.pruned.vcf.gz','','.tbi'))
     resources:
         mem_mb = 2500
     shell:
@@ -80,36 +79,26 @@ rule bcftools_prune:
 
 rule qtltools_pca:
     input:
-        lambda wildcards: rules.filter_TPM.output if wildcards.mode == 'bed' else (rules.bcftools_prune.output if wildcards.tissue == 'WGS' else rules.beagle4_imputation.output)
+        lambda wildcards: rules.filter_TPM.output if wildcards.mode == 'bed' else rules.bcftools_prune.output
     output:
-        temp(multiext('covariates/{tissue}.{coverage}.{mode}','.pca','.pca_stats'))
+        temp(multiext('covariates/{tissue}.{coverage}.{imputed}.{mode}','.pca','.pca_stats'))
     params:
         prefix = lambda wildcards, output: PurePath(output[0]).with_suffix('')
     resources:
-        mem_mb = lambda wildcards: 1024 if wildcards.mode == 'bed' else 10000,
+        mem_mb = lambda wildcards: 1024 if wildcards.mode == 'bed' else 15000,
         walltime = '30m'
     shell:
         '''
         QTLtools pca --{wildcards.mode} {input[0]} --out {params.prefix} --center --scale
         '''
 
-#fakeish rule, since original covariates are hardcoded should just run this manually
-rule make_fixed_covariates:
-    output:
-        temp('covariates/{expression}.fixed.txt')#,tissue=('Epididymis_head','Testis','Vas_deferens')))
-    localrule: True
-    shell:
-        '''
-        ../RNA_variant_calling/make_fixed.sh {wildcards.expression}
-        '''
-
 rule make_covariates:
     input:
         pca_expression = lambda wildcards: expand(rules.qtltools_pca.output,mode='bed',tissue=wildcards.expression,coverage=wildcards.exp_coverage,allow_missing=True),
         pca_variants = expand(rules.qtltools_pca.output,mode='vcf',allow_missing=True),
-        fixed = rules.make_fixed_covariates.output
+        fixed = lambda wildcards: config['fixed_covariates'][wildcards.expression]
     output:
-        'covariates/{tissue}.{coverage}.{expression}.{exp_coverage}.txt.gz'
+        'covariates/{tissue}.{coverage}.{expression}.{exp_coverage}.{imputed}.txt.gz'
     localrule: True
     shell:
         '''

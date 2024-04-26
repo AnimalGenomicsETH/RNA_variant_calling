@@ -127,7 +127,7 @@ rule happy:
         others = temp(multiext('F1/{sample}.{tissue}.{coverage}.{imputed}','.bcf','.bcf.csi','.extended.csv','.roc.all.csv.gz','.runinfo.json'))
     params:
         _dir = lambda wildcards, output: PurePath(output.csv).with_suffix('').with_suffix('')
-    container: '/cluster/work/pausch/alex/software/images/hap.py_latest.sif'
+    container: 'docker://pkrusche/hap.py'
     threads: 1
     resources:
         mem_mb = 5000,

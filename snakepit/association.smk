@@ -8,11 +8,9 @@ rule qtltools_ase:
         vcf = 'WGS_{coverage}/autosomes.imputed.vcf.gz',
         bam = 'subsampled_bams/{tissue}/{sample}.{coverage}.bam',
         reference = config['reference'],
-        annotation = '/cluster/work/pausch/alex/RNA_call_test/Bos_taurus.ARS-UCD1.2.108.chr.gtf'
+        annotation = config['GTF']
     output:
-        'ase/{sample}.{tissue}.{coverage}.ase',
-        #'ase/{sample}.{tissue}.metric',
-        #temp('ase/{sample}.{tissue}.ref_bias')
+        multiext('ase/{sample}.{tissue}.{coverage}','.ase','.metric','.ref_bias')
     params:
         out = lambda wildcards, output: PurePath(output[0]).with_suffix('')
     threads: 1
@@ -125,8 +123,7 @@ rule qtltools_FDR:
         'r/4.2.2'
     shell:
         '''
-        Rscript /cluster/work/pausch/alex/software/qtltools/scripts/qtltools_runFDR_cis.R {input} 0.05 {params.out}
-        #/cluster/work/pausch/alex/software/qtltools/scripts/fastcis.py {input} 0.05 {params.out}
+        Rscript qtltools_runFDR_cis.R {input} 0.05 {params.out}
         '''
 
 rule mismatched_QTL:
@@ -166,50 +163,3 @@ do
 
 done
         '''
-
-### REPLICATION RESULTS
-
-rule prepare_qtl:
-    input:
-        wgs = expand(rules.qtltools_gather.output,tissue='WGS',_pass='conditionals',MAF=format_MAF(config['MAF']),allow_missing=True),
-        tissue = lambda wildcards: expand(rules.qtltools_gather.output,tissue=wildcards.expression,_pass='conditionals',MAF=format_MAF(config['MAF']),allow_missing=True)
-    output:
-        'replication/{expression}.{coverage}.qtl'
-    #params:
-    #    expression = lambda wildcards: '$A&&$B' if wildcards.mode == 'best' else '$B'
-    localrule: True
-    shell:
-        '''
-        mawk '$21&&$22 {{print $1,$8 }}' {input} > {output}
-        '''
-
-rule qtltools_replicate:
-    input:
-        phenotypes = rules.filter_TPM.output[1],
-        covariates = lambda wildcards: config['covariates'][wildcards.expression],
-        vcf = lambda wildcards: expand(rules.normalise_vcf.output,tissue=wildcards.mode,coverage=wildcards.coverage),
-        qtl = rules.prepare_qtl.output
-    output:
-        'replication/{expression}.{mode}.{coverage}.replicated'
-    threads: 1
-    resources:
-        mem_mb = 2500
-    shell:
-        '''
-        QTLtools rep --bed {input.phenotypes} --cov {input.covariates} --vcf {input.vcf} --qtl {input.qtl} --normal --out {output}
-        '''
-
-rule collate_replicate:
-    input:
-        replication = rules.qtltools_replicate.output,
-        qtl = expand(rules.qtltools_gather.output,tissue='WGS',_pass='nominals',MAF=format_MAF(config['MAF']),allow_missing=True)
-    output:
-        'replication/{expression}.{mode}.{coverage}.csv'
-    shell:
-        '''
-        while read a b c d e f g h i j k
-        do
-          mawk -v C=$a -v D=$f -v p=$j -v s=$k '{{ if (NR==1) {{ for (i = 1; i<=NF;i++) if ($i=="nom_pval") {{ A=i }}  else {{ if ($i=="slope") {{ B=i }} }} }} else {{ if ($0~C&&$0~D) {{ pri  nt C,D,$A,$B,p,s }} }} }}' {input.qtl} >> {output}
-        done < {input.replication}
-        '''
-

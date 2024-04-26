@@ -12,9 +12,6 @@ rule perbase_depth:
         '''
         perbase only-depth {input} --bed-format -z -F 3848 -t {threads} --bgzip -L 6 -T {threads} -o {output}
         '''
-        #'''
-        #awk -v W={params.window} '$1~/^[0-9]/' {{ A[$1][int($2/W)]+=($3-$2)*$4 }} END {{ for (chr in A) {{ for (window in A[chr]) {{ print chr,window*W,window*W+W,A[chr][window] }} }} }}' > {output}
-        #'''
 
 rule missing_genes:
     input:
@@ -51,10 +48,9 @@ rule collate_coverage:
         cat <(echo -e "sample\\ttissue\\tcoverage\\tcoverage >1") {input} > {output}
         '''
 
-
 rule format_annotation:
     input:
-        fai = '/cluster/work/pausch/alex/REF_DATA/ARS-UCD1.2_Btau5.0.1Y.fa.fai'
+        fai = config['reference']+'.fai'
     output:
         'annotation.bed'
     params:
@@ -74,7 +70,7 @@ rule format_annotation:
 rule bedtools_annotate:
     input:
         beds = rules.perbase_depth.output,
-        annotation = 'annotation.bed'
+        annotation = rules.format_annotation.output
     output:
         'coverage/{sample}.{tissue}.{coverage}.annotated.bed'
     threads: 1
