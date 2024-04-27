@@ -92,7 +92,7 @@ rule bin_TPM_genes:
 
 rule make_CDS_regions:
     input:
-        rules.format_annotation.output['gtf'],
+        gtf = rules.format_annotation.output['gtf'],
         bins = rules.bin_TPM_genes.output
     output:
         CDS = 'happy/{tissue}.CDS.bed',
