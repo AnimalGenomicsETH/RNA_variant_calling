@@ -218,3 +218,27 @@ rule gather_ASE:
         '''
         {{ echo "sample tissue GT pval ASE_adjusted ASE_raw het_errors" ; cat {input} ; }} | pigz -p 2 -c > {output}
         '''
+
+rule variant_stats:
+    input:
+        unrevised = '{tissue}_full/autosomes.Unrevised.vcf.gz',
+        imputed = '{tissue}_full/autosomes.imputed.vcf.gz',
+        RDDs = 'RDDs.txt'
+    output:
+        'variant_metrics/{tissue}.csv'
+    shell:
+        '''
+        paste <(bcftools query -R {input.RDDs} -f '%QUAL %INFO/AF' {input.unrevised} | awk -v OFS='\\t' '{{print "{wildcards.tissue}",$1,$2}}') <(bcftools query -R {input.RDDs} -f '%INFO/DR2\\t%INFO/AF' {input.imputed}) > {output}
+        '''
+
+rule gather_variant_stats:
+    input:
+        expand(rules.variant_stats.output,tissue=('WGS','Testis','Epididymis_head','Vas_deferens'))
+    output:
+        'variant_metrics/merged.csv'
+    localrule: True
+    shell:
+        '''
+        echo -e "tissue\\traw_qual\\traw_AF\\timputed_accuracy\\timputed_AF" > {output}
+        cat {input} >> {output}
+        '''
