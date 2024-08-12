@@ -13,7 +13,9 @@ We even find some strange eQTL when using RNA-seq variants.
 
 ### Cite
 
-Preprint is coming soon.
+Now published as
+
+> Leonard, A., Mapel, X. & Pausch, H. **RNA-DNA differences in variant calls from cattle tissues result in erroneous eQTLs**. *BMC Genomics* 25, 750 (2024). [https://doi.org/10.1186/s12864-024-10645-z](https://doi.org/10.1186/s12864-024-10645-z)
 
 ### Using the code
 
