@@ -129,7 +129,8 @@ rule vep_annotate:
         vcf = rules.beagle4_imputation.output,
         vep = rules.vep_download.output[0]
     output:
-        'vep/{tissue}.{coverage}.vep'
+        vep = 'vep/{tissue}.{coverage}.vep',
+        raw = 'vep/{tissue}.{coverage}.raw_vep'
     params:
         lambda wildcards, input: PurePath(input.vep).parent
     threads: 4
@@ -139,7 +140,8 @@ rule vep_annotate:
     shell:
         '''
         export LC_ALL=C
-        vep -i {input.vcf[0]} --tab --fields "Consequence,IMPACT" --species bos_taurus --offline --no_headers --no_stats --dir {params} --output_file STDOUT --fork {threads} |\
+        vep -i {input.vcf[0]} --tab --species bos_taurus --offline --biotype --no_headers --no_stats --dir {params} --output_file STDOUT --fork {threads} |\
+        tee {output.raw} |\
         mawk '{{ split($1,c,","); for (k in c) {{ ++CSQ[c[k]"_"$2] }} }} END {{ for (k in CSQ) {{ print k,CSQ[k] }} }}' |\
-        sed 's/\(.*\)_/\\1 /' > {output}
+        sed 's/\(.*\)_/\\1 /' > {output.vep}
         '''
